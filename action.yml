@@ -1,0 +1,32 @@
+name: ASTDiff Bot
+description: A GitHub Action to run RefactoringMiner and upload diff results as a .zip.
+branding:
+  icon: anchor
+  color: blue
+
+inputs:
+  URL:
+    description: 'URL of the repository for the diff operation'
+    required: true
+  OAuthToken:
+    description: 'OAuthToken for read the commit/pr information (Only required for private urls)'
+    required: false
+    default: ${{ github.token }}
+
+  screenshot:
+    description: 'Name of the file that you want to take screenshot of'
+    required: false
+    default: ''
+
+  fromDockerHub:
+    description: 'If true, pulls the RefactoringMiner image from DockerHub; if false, builds it from the repo'
+    required: false
+    default: 'true'
+  
+outputs:
+  artifact_url:
+    description: 'URL to download the generated diff artifact'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
