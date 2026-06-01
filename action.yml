@@ -1,32 +1,19 @@
-name: RefactoringMiner Diff Action
-description: 'GitHub Action to perform diff operations using RefactoringMiner and generate a report of refactorings between two commits or pull requests.'
+name: 'RefactoringMiner Report'
+description: 'Detects refactorings in commits/PRs and posts a markdown report as a PR comment'
+author: 'Parsa Hejazi'
+
 branding:
-  icon: anchor
-  color: green
+  icon: 'search'
+  color: 'green'
 
 inputs:
-  URL:
-    description: 'URL of the repository for the diff operation'
+  github-token:
+    description: 'Token used to post the PR comment'
     required: true
-  OAuthToken:
-    description: 'OAuthToken for read the commit/pr information (Only required for private urls)'
-    required: false
     default: ${{ github.token }}
 
-  screenshot:
-    description: 'Name of the file that you want to take screenshot of'
-    required: false
-    default: ''
-
-  fromDockerHub:
-    description: 'If true then pulls the RefactoringMiner image from DockerHub; if false, builds it from the repo'
-    required: false
-    default: 'true'
-  
-outputs:
-  artifact_url:
-    description: 'URL to download the generated diff artifact'
-
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.github-token }}
