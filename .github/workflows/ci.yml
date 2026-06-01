@@ -6,30 +6,46 @@ on:
   pull_request:
 
 jobs:
-  shellcheck:
-    name: Lint (ShellCheck)
+  lint:
+    name: Lint (ESLint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ludeeus/action-shellcheck@master
+      - uses: actions/setup-node@v4
         with:
-          scandir: '.'
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
 
-  docker-build:
-    name: Build Docker image
+  test:
+    name: Test (Jest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build
-        run: docker build -t refactoringminer-action-test .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
 
   sonarcloud:
     name: SonarCloud
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
       - uses: sonarsource/sonarcloud-github-action@v3
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
