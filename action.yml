@@ -1,8 +1,8 @@
-name: ASTDiff Bot
-description: A GitHub Action to run RefactoringMiner and upload diff results as a .zip.
+name: RefactoringMiner Diff Action
+description: 'GitHub Action to perform diff operations using RefactoringMiner and generate a report of refactorings between two commits or pull requests.'
 branding:
   icon: anchor
-  color: blue
+  color: green
 
 inputs:
   URL:
