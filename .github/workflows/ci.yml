@@ -7,7 +7,7 @@ on:
 
 jobs:
   shellcheck:
-    name: Lint entrypoint.sh
+    name: Lint (ShellCheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
