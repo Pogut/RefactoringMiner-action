@@ -1,4 +1,4 @@
-jest.mock('@actions/github');
+jest.mock('@actions/github', () => ({ getOctokit: jest.fn() }));
 jest.mock('fs', () => ({
   ...jest.requireActual('fs'),
   readFileSync: jest.fn(),
