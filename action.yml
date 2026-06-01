@@ -19,7 +19,7 @@ inputs:
     default: ''
 
   fromDockerHub:
-    description: 'If true, pulls the RefactoringMiner image from DockerHub; if false, builds it from the repo'
+    description: 'If true then pulls the RefactoringMiner image from DockerHub; if false, builds it from the repo'
     required: false
     default: 'true'
   
