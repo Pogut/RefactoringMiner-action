@@ -1,36 +1,43 @@
 const core = require('@actions/core');
 const exec = require('@actions/exec');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const IMAGE = 'tsantalis/refactoringminer:latest';
-const OUTPUT_DIR = '/tmp/rm-output';
-const OUTPUT_FILE = path.join(OUTPUT_DIR, 'refactorings.json');
 const CONTAINER_WORKSPACE = '/workspace';
 const CONTAINER_OUTPUT = '/output';
 
 /**
  * Pulls the RefactoringMiner Docker image, runs it against the checkout,
  * and returns the parsed JSON output.
+ *
+ * Uses mkdtempSync to create a private, uniquely-named temp directory
+ * (mode 0700) rather than a static path under /tmp, avoiding symlink
+ * attacks in a world-writable directory.
  */
 async function runRefactoringMiner(workspace, eventName, eventPath) {
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-'));
 
-  core.info(`Pulling ${IMAGE}...`);
-  await exec.exec('docker', ['pull', IMAGE]);
+  try {
+    core.info(`Pulling ${IMAGE}...`);
+    await exec.exec('docker', ['pull', IMAGE]);
 
-  const rmArgs = buildRmArgs(eventName, eventPath);
-  core.info(`Running RefactoringMiner (${eventName})...`);
+    const rmArgs = buildRmArgs(eventName, eventPath);
+    core.info(`Running RefactoringMiner (${eventName})...`);
 
-  await exec.exec('docker', [
-    'run', '--rm',
-    '-v', `${workspace}:${CONTAINER_WORKSPACE}`,
-    '-v', `${OUTPUT_DIR}:${CONTAINER_OUTPUT}`,
-    IMAGE,
-    ...rmArgs,
-  ]);
+    await exec.exec('docker', [
+      'run', '--rm',
+      '-v', `${workspace}:${CONTAINER_WORKSPACE}`,
+      '-v', `${tmpDir}:${CONTAINER_OUTPUT}`,
+      IMAGE,
+      ...rmArgs,
+    ]);
 
-  return JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf8'));
+    return JSON.parse(fs.readFileSync(path.join(tmpDir, 'refactorings.json'), 'utf8'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 /**
