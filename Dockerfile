@@ -1,10 +1,7 @@
 FROM tsantalis/refactoringminer:latest
 
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    jq \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache curl jq
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
