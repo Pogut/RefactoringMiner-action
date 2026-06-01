@@ -13,7 +13,5 @@ inputs:
     default: ${{ github.token }}
 
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
-  args:
-    - ${{ inputs.github-token }}
+  using: 'node20'
+  main: 'dist/index.js'

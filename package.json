@@ -1,0 +1,23 @@
+{
+  "name": "refactoringminer-action",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action that detects refactorings and posts a PR comment",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "ncc build src/index.js -o dist --source-map --license licenses.txt",
+    "test": "jest",
+    "lint": "eslint src/ tests/",
+    "lint:fix": "eslint src/ tests/ --fix"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/exec": "^1.1.1",
+    "@actions/github": "^6.0.0"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.3",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0"
+  }
+}
