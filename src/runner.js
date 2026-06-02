@@ -30,6 +30,9 @@ async function runRefactoringMiner(workspace, eventName, eventPath) {
       'run', '--rm',
       '-v', `${workspace}:${CONTAINER_WORKSPACE}`,
       '-v', `${tmpDir}:${CONTAINER_OUTPUT}`,
+      '-e', 'GIT_CONFIG_COUNT=1',
+      '-e', 'GIT_CONFIG_KEY_0=safe.directory',
+      '-e', 'GIT_CONFIG_VALUE_0=*',
       IMAGE,
       ...rmArgs,
     ]);
