@@ -29939,6 +29939,7 @@ async function postOrUpdateComment(token, body, eventPath) {
     owner,
     repo,
     issue_number: prNumber,
+    per_page: 100,
   });
 
   const existing = comments.find(c => c.body.startsWith(COMMENT_HEADER));
@@ -30012,7 +30013,7 @@ const fs = __nccwpck_require__(9896);
 const os = __nccwpck_require__(857);
 const path = __nccwpck_require__(6928);
 
-const IMAGE = 'tsantalis/refactoringminer:latest';
+const DEFAULT_IMAGE = 'tsantalis/refactoringminer:latest';
 const CONTAINER_WORKSPACE = '/workspace';
 const CONTAINER_OUTPUT = '/output';
 
@@ -30024,12 +30025,12 @@ const CONTAINER_OUTPUT = '/output';
  * (mode 0700) rather than a static path under /tmp, avoiding symlink
  * attacks in a world-writable directory.
  */
-async function runRefactoringMiner(workspace, eventName, eventPath) {
+async function runRefactoringMiner(workspace, eventName, eventPath, image = DEFAULT_IMAGE) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-'));
 
   try {
-    core.info(`Pulling ${IMAGE}...`);
-    await exec.exec('docker', ['pull', IMAGE]);
+    core.info(`Pulling ${image}...`);
+    await exec.exec('docker', ['pull', image]);
 
     const rmArgs = buildRmArgs(eventName, eventPath);
     core.info(`Running RefactoringMiner (${eventName})...`);
@@ -30041,7 +30042,7 @@ async function runRefactoringMiner(workspace, eventName, eventPath) {
       '-e', 'GIT_CONFIG_COUNT=1',
       '-e', 'GIT_CONFIG_KEY_0=safe.directory',
       '-e', 'GIT_CONFIG_VALUE_0=*',
-      IMAGE,
+      image,
       ...rmArgs,
     ]);
 
@@ -31994,11 +31995,12 @@ const { postOrUpdateComment } = __nccwpck_require__(1147);
 async function run() {
   try {
     const token = core.getInput('github-token', { required: true });
+    const image = core.getInput('image');
     const eventName = process.env.GITHUB_EVENT_NAME;
     const eventPath = process.env.GITHUB_EVENT_PATH;
     const workspace = process.env.GITHUB_WORKSPACE;
 
-    const data = await runRefactoringMiner(workspace, eventName, eventPath);
+    const data = await runRefactoringMiner(workspace, eventName, eventPath, image);
     const body = buildComment(data);
 
     if (eventName === 'pull_request') {
