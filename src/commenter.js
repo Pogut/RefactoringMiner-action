@@ -12,6 +12,7 @@ async function postOrUpdateComment(token, body, eventPath) {
     owner,
     repo,
     issue_number: prNumber,
+    per_page: 100,
   });
 
   const existing = comments.find(c => c.body.startsWith(COMMENT_HEADER));

@@ -6,11 +6,12 @@ const { postOrUpdateComment } = require('./commenter');
 async function run() {
   try {
     const token = core.getInput('github-token', { required: true });
+    const image = core.getInput('image');
     const eventName = process.env.GITHUB_EVENT_NAME;
     const eventPath = process.env.GITHUB_EVENT_PATH;
     const workspace = process.env.GITHUB_WORKSPACE;
 
-    const data = await runRefactoringMiner(workspace, eventName, eventPath);
+    const data = await runRefactoringMiner(workspace, eventName, eventPath, image);
     const body = buildComment(data);
 
     if (eventName === 'pull_request') {

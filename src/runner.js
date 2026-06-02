@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const IMAGE = 'tsantalis/refactoringminer:latest';
+const DEFAULT_IMAGE = 'tsantalis/refactoringminer:latest';
 const CONTAINER_WORKSPACE = '/workspace';
 const CONTAINER_OUTPUT = '/output';
 
@@ -16,12 +16,12 @@ const CONTAINER_OUTPUT = '/output';
  * (mode 0700) rather than a static path under /tmp, avoiding symlink
  * attacks in a world-writable directory.
  */
-async function runRefactoringMiner(workspace, eventName, eventPath) {
+async function runRefactoringMiner(workspace, eventName, eventPath, image = DEFAULT_IMAGE) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-'));
 
   try {
-    core.info(`Pulling ${IMAGE}...`);
-    await exec.exec('docker', ['pull', IMAGE]);
+    core.info(`Pulling ${image}...`);
+    await exec.exec('docker', ['pull', image]);
 
     const rmArgs = buildRmArgs(eventName, eventPath);
     core.info(`Running RefactoringMiner (${eventName})...`);
@@ -33,7 +33,7 @@ async function runRefactoringMiner(workspace, eventName, eventPath) {
       '-e', 'GIT_CONFIG_COUNT=1',
       '-e', 'GIT_CONFIG_KEY_0=safe.directory',
       '-e', 'GIT_CONFIG_VALUE_0=*',
-      IMAGE,
+      image,
       ...rmArgs,
     ]);
 

@@ -11,7 +11,11 @@ inputs:
     description: 'Token used to post the PR comment'
     required: true
     default: ${{ github.token }}
+  image:
+    description: 'RefactoringMiner Docker image to use (e.g. tsantalis/refactoringminer:3.0.9)'
+    required: false
+    default: 'tsantalis/refactoringminer:latest'
 
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'
