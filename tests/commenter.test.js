@@ -89,6 +89,14 @@ describe('postOrUpdateComment', () => {
         expect.objectContaining({ body })
       );
     });
+
+    test('fetches up to 100 comments per page', async () => {
+      await postOrUpdateComment('token', 'body', '/fake/event.json');
+
+      expect(mockListComments).toHaveBeenCalledWith(
+        expect.objectContaining({ per_page: 100 })
+      );
+    });
   });
 
   describe('when an existing bot comment exists', () => {

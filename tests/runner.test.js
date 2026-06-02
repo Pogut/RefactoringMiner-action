@@ -78,11 +78,20 @@ describe('runRefactoringMiner', () => {
     expect(fs.mkdtempSync.mock.calls[0][0]).toMatch(/rm-$/);
   });
 
-  test('pulls the Docker image before running', async () => {
+  test('pulls the default Docker image before running', async () => {
     await runRefactoringMiner('/workspace', 'push', null);
     const [cmd, args] = exec.exec.mock.calls[0];
     expect(cmd).toBe('docker');
     expect(args).toEqual(['pull', 'tsantalis/refactoringminer:latest']);
+  });
+
+  test('uses a custom image when provided', async () => {
+    await runRefactoringMiner('/workspace', 'push', null, 'tsantalis/refactoringminer:3.0.9');
+    const [, pullArgs] = exec.exec.mock.calls[0];
+    const [, runArgs] = exec.exec.mock.calls[1];
+    expect(pullArgs).toEqual(['pull', 'tsantalis/refactoringminer:3.0.9']);
+    expect(runArgs).toContain('tsantalis/refactoringminer:3.0.9');
+    expect(runArgs).not.toContain('tsantalis/refactoringminer:latest');
   });
 
   test('mounts workspace and temp dir into the container', async () => {
@@ -90,6 +99,14 @@ describe('runRefactoringMiner', () => {
     const [, args] = exec.exec.mock.calls[1];
     expect(args).toContain('/workspace:/workspace');
     expect(args).toContain(`${FAKE_TMP}:/output`);
+  });
+
+  test('passes safe.directory env vars to the container', async () => {
+    await runRefactoringMiner('/workspace', 'push', null);
+    const [, args] = exec.exec.mock.calls[1];
+    expect(args).toContain('GIT_CONFIG_COUNT=1');
+    expect(args).toContain('GIT_CONFIG_KEY_0=safe.directory');
+    expect(args).toContain('GIT_CONFIG_VALUE_0=*');
   });
 
   test('returns the parsed JSON from the output file', async () => {
