@@ -7,8 +7,11 @@ jest.mock('fs', () => ({
 const { getOctokit } = require('@actions/github');
 const fs = require('fs');
 const { postOrUpdateComment } = require('../src/commenter');
+const { COMMENT_HEADER } = require('../src/formatter');
 
 const mockCreateComment = jest.fn().mockResolvedValue({});
+const mockUpdateComment = jest.fn().mockResolvedValue({});
+const mockListComments = jest.fn();
 
 describe('postOrUpdateComment', () => {
   const originalEnv = process.env;
@@ -18,7 +21,13 @@ describe('postOrUpdateComment', () => {
     process.env = { ...originalEnv, GITHUB_REPOSITORY: 'owner/repo' };
 
     getOctokit.mockReturnValue({
-      rest: { issues: { createComment: mockCreateComment } },
+      rest: {
+        issues: {
+          createComment: mockCreateComment,
+          updateComment: mockUpdateComment,
+          listComments: mockListComments,
+        },
+      },
     });
 
     fs.readFileSync.mockReturnValue(
@@ -30,48 +39,93 @@ describe('postOrUpdateComment', () => {
     process.env = originalEnv;
   });
 
-  test('posts a comment to the correct PR number', async () => {
-    await postOrUpdateComment('token', 'test body', '/fake/event.json');
+  describe('when no existing bot comment exists', () => {
+    beforeEach(() => {
+      mockListComments.mockResolvedValue({ data: [] });
+    });
 
-    expect(mockCreateComment).toHaveBeenCalledWith({
-      owner: 'owner',
-      repo: 'repo',
-      issue_number: 42,
-      body: 'test body',
+    test('creates a new comment', async () => {
+      await postOrUpdateComment('token', 'test body', '/fake/event.json');
+
+      expect(mockCreateComment).toHaveBeenCalledWith({
+        owner: 'owner',
+        repo: 'repo',
+        issue_number: 42,
+        body: 'test body',
+      });
+      expect(mockUpdateComment).not.toHaveBeenCalled();
+    });
+
+    test('authenticates with the provided token', async () => {
+      await postOrUpdateComment('my-secret-token', 'body', '/fake/event.json');
+      expect(getOctokit).toHaveBeenCalledWith('my-secret-token');
+    });
+
+    test('splits owner and repo from GITHUB_REPOSITORY', async () => {
+      process.env.GITHUB_REPOSITORY = 'myorg/myrepo';
+      await postOrUpdateComment('token', 'body', '/fake/event.json');
+
+      expect(mockCreateComment).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: 'myorg', repo: 'myrepo' })
+      );
+    });
+
+    test('reads the PR number from the event file', async () => {
+      fs.readFileSync.mockReturnValue(
+        JSON.stringify({ pull_request: { number: 99 } })
+      );
+      await postOrUpdateComment('token', 'body', '/event.json');
+
+      expect(mockCreateComment).toHaveBeenCalledWith(
+        expect.objectContaining({ issue_number: 99 })
+      );
+    });
+
+    test('passes the comment body through unchanged', async () => {
+      const body = `${COMMENT_HEADER}\nFound 2 refactorings: 2 Extract Method`;
+      await postOrUpdateComment('token', body, '/fake/event.json');
+
+      expect(mockCreateComment).toHaveBeenCalledWith(
+        expect.objectContaining({ body })
+      );
     });
   });
 
-  test('authenticates with the provided token', async () => {
-    await postOrUpdateComment('my-secret-token', 'body', '/fake/event.json');
-    expect(getOctokit).toHaveBeenCalledWith('my-secret-token');
-  });
+  describe('when an existing bot comment exists', () => {
+    const existingCommentId = 777;
 
-  test('splits owner and repo from GITHUB_REPOSITORY', async () => {
-    process.env.GITHUB_REPOSITORY = 'myorg/myrepo';
-    await postOrUpdateComment('token', 'body', '/fake/event.json');
+    beforeEach(() => {
+      mockListComments.mockResolvedValue({
+        data: [
+          { id: 123, body: 'some other comment' },
+          { id: existingCommentId, body: `${COMMENT_HEADER}\nOld content` },
+        ],
+      });
+    });
 
-    expect(mockCreateComment).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: 'myorg', repo: 'myrepo' })
-    );
-  });
+    test('updates the existing comment instead of creating a new one', async () => {
+      const newBody = `${COMMENT_HEADER}\nFound 3 refactorings`;
+      await postOrUpdateComment('token', newBody, '/fake/event.json');
 
-  test('reads the PR number from the event file', async () => {
-    fs.readFileSync.mockReturnValue(
-      JSON.stringify({ pull_request: { number: 99 } })
-    );
-    await postOrUpdateComment('token', 'body', '/event.json');
+      expect(mockUpdateComment).toHaveBeenCalledWith({
+        owner: 'owner',
+        repo: 'repo',
+        comment_id: existingCommentId,
+        body: newBody,
+      });
+      expect(mockCreateComment).not.toHaveBeenCalled();
+    });
 
-    expect(mockCreateComment).toHaveBeenCalledWith(
-      expect.objectContaining({ issue_number: 99 })
-    );
-  });
+    test('matches the bot comment by COMMENT_HEADER prefix', async () => {
+      mockListComments.mockResolvedValue({
+        data: [{ id: 99, body: `${COMMENT_HEADER}\nSomething` }],
+      });
 
-  test('passes the comment body through unchanged', async () => {
-    const body = '### RefactoringMiner Report\nFound 2 refactorings: 2 Extract Method';
-    await postOrUpdateComment('token', body, '/fake/event.json');
+      await postOrUpdateComment('token', 'new body', '/fake/event.json');
 
-    expect(mockCreateComment).toHaveBeenCalledWith(
-      expect.objectContaining({ body })
-    );
+      expect(mockUpdateComment).toHaveBeenCalledWith(
+        expect.objectContaining({ comment_id: 99 })
+      );
+    });
   });
 });
