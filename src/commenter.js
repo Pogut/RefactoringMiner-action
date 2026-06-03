@@ -2,11 +2,10 @@ const { getOctokit } = require('@actions/github');
 const fs = require('fs');
 const { COMMENT_HEADER } = require('./formatter');
 
-async function postOrUpdateComment(token, body, eventPath) {
+async function postOrUpdateComment(token, body, eventPath, octokit = getOctokit(token)) {
   const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
   const prNumber = event.pull_request.number;
   const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-  const octokit = getOctokit(token);
 
   const { data: comments } = await octokit.rest.issues.listComments({
     owner,
