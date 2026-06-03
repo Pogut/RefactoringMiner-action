@@ -56,6 +56,14 @@ Alongside the summary, the action exports RefactoringMiner's interactive Monaco 
 
 This keeps private source code off public URLs and never clobbers an existing Pages site.
 
+### First-time setup (public repos) — enable Pages once
+
+The action pushes the interactive view to a `gh-pages` branch, but **GitHub Pages can't be turned on automatically** — the `GITHUB_TOKEN` isn't allowed to enable it. So the **first time** the action runs on a repo, do this one-time step:
+
+> **Settings → Pages → Build and deployment → Source:** "Deploy from a branch" → **Branch:** `gh-pages`, folder `/ (root)` → **Save**
+
+Give it about a minute, then the link in the PR comment will load. After this one-time setup, every later run just updates the content and the links work on their own. (Until Pages is enabled, the comment still posts and the link simply 404s — the action logs a reminder rather than failing.)
+
 ## Inputs
 
 | Input | Description | Required | Default |

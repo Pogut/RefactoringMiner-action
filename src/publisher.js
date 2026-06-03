@@ -102,6 +102,10 @@ async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, 
   fs.mkdirSync(dest, { recursive: true });
   fs.cpSync(webDir, dest, { recursive: true });
 
+  // Disable Jekyll so Pages serves the Monaco assets verbatim (Jekyll otherwise
+  // drops files/folders beginning with an underscore).
+  fs.writeFileSync(path.join(dir, '.nojekyll'), '');
+
   await commitAndPush(dir, `Publish refactoring diff for PR #${prNumber} (${sha})`);
   fs.rmSync(dir, { recursive: true, force: true });
 
@@ -118,9 +122,17 @@ async function ensurePagesEnabled(octokit, owner, repo) {
     });
   } catch (err) {
     // 409 = already enabled, which is the common case after the first run.
-    if (err.status !== 409) {
-      core.warning(`Could not enable GitHub Pages automatically: ${err.message}`);
+    if (err.status === 409) {
+      return;
     }
+    // The GITHUB_TOKEN cannot enable Pages via the API, so this needs a one-time
+    // manual step. The diff is already on gh-pages; once Pages is on, links work.
+    core.warning(
+      'The interactive diff was pushed to the gh-pages branch, but GitHub Pages is not ' +
+      'enabled yet (the GITHUB_TOKEN cannot enable it automatically). Enable it once under ' +
+      'Settings → Pages → "Deploy from a branch" → branch "gh-pages", folder "/ (root)". ' +
+      'After that, the comment link works on every run.',
+    );
   }
 }
 

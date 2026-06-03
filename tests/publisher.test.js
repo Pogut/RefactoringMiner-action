@@ -11,11 +11,13 @@ jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   cpSync: jest.fn(),
   rmSync: jest.fn(),
+  writeFileSync: jest.fn(),
   existsSync: jest.fn(() => true),
   readdirSync: jest.fn(() => [{ name: 'index.html', isDirectory: () => false }]),
 }));
 
 const exec = require('@actions/exec');
+const fs = require('fs');
 const {
   decideTarget,
   publishToPages,
@@ -99,6 +101,18 @@ describe('publishToPages', () => {
     );
     expect(pushed).toBe(true);
     expect(octokit.rest.repos.createPagesSite).toHaveBeenCalled();
+  });
+
+  test('writes a .nojekyll marker so Pages serves assets verbatim', async () => {
+    const octokit = octokitWithPages(jest.fn());
+    await publishToPages({
+      octokit, token: 't', serverUrl: 'https://github.com',
+      owner: 'o', repo: 'r', webDir: '/tmp/web', prNumber: 5, sha: 'sha9',
+    });
+    const wroteNoJekyll = fs.writeFileSync.mock.calls.some(
+      ([file]) => String(file).endsWith('.nojekyll'),
+    );
+    expect(wroteNoJekyll).toBe(true);
   });
 });
 
