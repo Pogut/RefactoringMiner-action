@@ -4,7 +4,9 @@ A GitHub Action that detects refactorings in pull requests, posts a markdown sum
 
 Built on top of [RefactoringMiner](https://github.com/tsantalis/RefactoringMiner) by Nikolaos Tsantalis.
 
-## Usage
+> **Available on the [GitHub Marketplace](https://github.com/marketplace).** Add it from the Marketplace or reference it directly in a workflow as shown below — no manual setup or vendoring required.
+
+## Quick start
 
 Create `.github/workflows/refactorings.yml` in your repository:
 
@@ -29,9 +31,10 @@ jobs:
       - uses: Pogut/refactoringminer-action@v1
 ```
 
-- `fetch-depth: 0` is required so RefactoringMiner has full commit history for range analysis.
-- The `closed` trigger type lets the action clean up a PR's published diffs when it closes. It's optional but recommended.
-- If you only want the summary comment (no interactive view), set `enable-web-view: false` and you can drop the `contents: write` / `pages: write` permissions.
+That's it. On every pull request, the action analyzes the commit range and posts (or updates) a single summary comment.
+
+- `fetch-depth: 0` is required so RefactoringMiner has the full commit history for range analysis.
+- The `pull-requests: write` permission is required so the action can post the comment.
 
 ## Comment example
 
@@ -44,44 +47,32 @@ jobs:
 >
 > 🔍 **[View the interactive diff](#)** _(first run may take ~1 min to go live)_
 
-## The interactive diff view
-
-Alongside the summary, the action exports RefactoringMiner's interactive Monaco AST-diff view (a self-contained static site) and links it from the comment. Where it's hosted depends on the repository:
-
-| Repository | GitHub Pages | Behavior |
-|---|---|---|
-| Public | unused, or already served from `gh-pages` | Published to `gh-pages` under `refactorings/pr-<n>/<sha>/`; comment links to it |
-| Public | already serving your own site from another source | Uploaded as a workflow **artifact**; comment links to the run |
-| Private | — | Uploaded as a workflow **artifact**; comment links to the run |
-
-This keeps private source code off public URLs and never clobbers an existing Pages site.
-
-### First-time setup (public repos) — enable Pages once
-
-The action pushes the interactive view to a `gh-pages` branch, but **GitHub Pages can't be turned on automatically** — the `GITHUB_TOKEN` isn't allowed to enable it. So the **first time** the action runs on a repo, do this one-time step:
-
-> **Settings → Pages → Build and deployment → Source:** "Deploy from a branch" → **Branch:** `gh-pages`, folder `/ (root)` → **Save**
-
-Give it about a minute, then the link in the PR comment will load. After this one-time setup, every later run just updates the content and the links work on their own. (Until Pages is enabled, the comment still posts and the link simply 404s — the action logs a reminder rather than failing.)
+When no refactorings are found, the comment reads _"No refactorings detected in this change."_ The action reuses the same comment across pushes to a PR rather than posting a new one each time.
 
 ## Inputs
 
 | Input | Description | Required | Default |
 |---|---|---|---|
-| `github-token` | Token used to post the comment and publish the view. | No | `${{ github.token }}` |
-| `image` | RefactoringMiner Docker image to run (e.g. `tsantalis/refactoringminer:3.0.9`). | No | `tsantalis/refactoringminer:latest` |
-| `enable-web-view` | Export and link the interactive AST-diff view. Set `false` for summary only. | No | `true` |
+| `github-token` | Token used to post the PR comment. | No | `${{ github.token }}` |
+| `image` | RefactoringMiner Docker image to run (e.g. `tsantalis/refactoringminer:3.0.9`). Pin a specific tag for reproducible results. | No | `tsantalis/refactoringminer:latest` |
+
+### Pinning the RefactoringMiner version
+
+```yaml
+      - uses: Pogut/refactoringminer-action@v1
+        with:
+          image: tsantalis/refactoringminer:3.0.9
+```
 
 ## How it works
 
-1. On `pull_request` events, runs `refactoringminer -bc` across the commit range (base→head) for the summary.
-2. With `enable-web-view`, runs `refactoringminer diff --url <pr-url> -e` to export the interactive view, then publishes it (Pages or artifact) and links it in the comment.
-3. On `push` events, runs `refactoringminer -c` against the pushed commit and logs the summary.
-4. When a PR is closed, removes its published diffs from `gh-pages`.
+1. On `pull_request` events, runs `refactoringminer -bc` across the commit range from base to head and posts a grouped summary as a PR comment.
+2. On `push` events, runs `refactoringminer -c` against the pushed commit and logs the result to the workflow output.
+3. The Docker image is pulled and run automatically — you don't need Java, Docker setup, or RefactoringMiner installed on the runner.
 
 ## Requirements
 
-- **Linux runners only** (`ubuntu-latest` recommended). This Docker container action does not run on Windows or macOS hosted runners.
+- **Linux runners only** (`ubuntu-latest` recommended). This is a Docker container action and does not run on Windows or macOS hosted runners.
 - A checkout with full history (`fetch-depth: 0`).
 
 ## License
