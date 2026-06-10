@@ -66,6 +66,91 @@ describe('buildComment', () => {
   });
 });
 
+describe('buildComment diff links', () => {
+  const crypto = require('crypto');
+  const ctx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r' };
+  const sha = 'a'.repeat(40);
+  const anchor = p => 'diff-' + crypto.createHash('sha256').update(p, 'utf8').digest('hex');
+
+  function withLocations() {
+    return {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Rename Attribute',
+          description: 'Rename Attribute fullName to displayName',
+          rightSideLocations: [{ filePath: 'src/main/java/CustomerProfile.java', startLine: 12 }],
+          leftSideLocations: [{ filePath: 'src/main/java/CustomerProfile.java', startLine: 9 }],
+        }],
+      }],
+    };
+  }
+
+  test('appends a commit link targeting the right-side line', () => {
+    const body = buildComment(withLocations(), undefined, ctx);
+    const expected = `https://github.com/o/r/commit/${sha}#${anchor('src/main/java/CustomerProfile.java')}R12`;
+    expect(body).toContain(`[↗ view diff](${expected})`);
+  });
+
+  test('hashes root-level paths too (not the literal filename)', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Encapsulate Attribute',
+          description: 'Encapsulate Attribute loyaltyPoints',
+          rightSideLocations: [{ filePath: 'CustomerProfile.java', startLine: 3 }],
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, ctx);
+    expect(body).toContain(`#${anchor('CustomerProfile.java')}R3`);
+    expect(body).not.toContain('#diff-CustomerProfile.java');
+  });
+
+  test('falls back to the left side when no right-side location exists', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Inline Method',
+          description: 'Inline Method centsToDollars',
+          leftSideLocations: [{ filePath: 'OrderProcessor.java', startLine: 7 }],
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, ctx);
+    expect(body).toContain(`#${anchor('OrderProcessor.java')}L7`);
+  });
+
+  test('prefers the commit url emitted by RefactoringMiner', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        url: 'https://ghe.example.com/o/r/commit/deadbeef',
+        refactorings: [{
+          type: 'Rename Attribute',
+          description: 'x',
+          rightSideLocations: [{ filePath: 'A.java', startLine: 1 }],
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, ctx);
+    expect(body).toContain(`https://ghe.example.com/o/r/commit/deadbeef#${anchor('A.java')}R1`);
+  });
+
+  test('omits the link when context is missing', () => {
+    const body = buildComment(withLocations());
+    expect(body).not.toContain('view diff');
+    expect(body).toContain('- **Rename Attribute** — Rename Attribute fullName to displayName');
+  });
+
+  test('omits the link when locations are missing', () => {
+    const body = buildComment(twoExtractOneRename(), undefined, ctx);
+    expect(body).not.toContain('view diff');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
