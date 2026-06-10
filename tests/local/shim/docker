@@ -1,0 +1,18 @@
+#!/bin/sh
+# Local-testing shim for `docker`.
+#
+# runner.js / exporter.js always run `docker pull <image>` before `docker run`.
+# A locally-built image (e.g. testimage:latest) is not on any registry, so a real
+# pull would fail and abort the action. This shim no-ops `pull` and forwards
+# every other docker invocation to the real binary unchanged.
+#
+# It is placed first on PATH by run-local.sh; the action's code is untouched.
+
+REAL_DOCKER="${REAL_DOCKER:-/usr/local/bin/docker}"
+
+if [ "$1" = "pull" ]; then
+  echo "[docker-shim] skipping pull (using local image): $2" >&2
+  exit 0
+fi
+
+exec "$REAL_DOCKER" "$@"
