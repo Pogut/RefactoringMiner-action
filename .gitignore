@@ -3,3 +3,4 @@ coverage/
 .env
 *.log
 licenses.txt
+tests/local/event-pr.generated.json

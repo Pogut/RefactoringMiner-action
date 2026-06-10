@@ -40,6 +40,30 @@ describe('buildComment', () => {
     const body = buildComment(data);
     expect(body).toContain('Found 2 refactorings');
   });
+
+  test('appends a Pages view link when view kind is pages', () => {
+    const body = buildComment(twoExtractOneRename(), { url: 'https://x.github.io/r/list/', kind: 'pages' });
+    expect(body).toContain('View the interactive diff');
+    expect(body).toContain('https://x.github.io/r/list/');
+  });
+
+  test('appends an artifact view link when view kind is artifact', () => {
+    const body = buildComment(twoExtractOneRename(), { url: 'https://github.com/o/r/actions/runs/1', kind: 'artifact' });
+    expect(body).toContain('workflow artifact');
+    expect(body).toContain('https://github.com/o/r/actions/runs/1');
+  });
+
+  test('appends the view link even when no refactorings are detected', () => {
+    const body = buildComment({ commits: [] }, { url: 'https://x.github.io/r/list/', kind: 'pages' });
+    expect(body).toContain('No refactorings detected');
+    expect(body).toContain('View the interactive diff');
+  });
+
+  test('omits the footer when no view is provided', () => {
+    const body = buildComment(twoExtractOneRename());
+    expect(body).not.toContain('View the interactive diff');
+    expect(body).not.toContain('workflow artifact');
+  });
 });
 
 // ---------------------------------------------------------------------------

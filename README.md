@@ -1,6 +1,6 @@
 # RefactoringMiner Action
 
-A GitHub Action that detects refactorings in pull requests and posts a markdown summary as a PR comment.
+A GitHub Action that detects refactorings in pull requests, posts a markdown summary as a PR comment, and links reviewers to RefactoringMiner's **interactive AST-diff view**.
 
 Built on top of [RefactoringMiner](https://github.com/tsantalis/RefactoringMiner) by Nikolaos Tsantalis.
 
@@ -14,10 +14,12 @@ Create `.github/workflows/refactorings.yml` in your repository:
 name: Refactoring Report
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
-  contents: read
-  pull-requests: write
+  contents: write        # publish the interactive view to gh-pages
+  pages: write           # enable GitHub Pages on first run
+  pull-requests: write   # post the PR comment
 
 jobs:
   report:
@@ -42,6 +44,8 @@ That's it. On every pull request, the action analyzes the commit range and posts
 > - **Extract Method** — `computeTotal()` extracted from `checkout()` in `Cart.java`
 > - **Extract Method** — `validateInput()` extracted from `submit()` in `FormHandler.java`
 > - **Rename Variable** — `x` renamed to `itemCount` in `Inventory.java`
+>
+> 🔍 **[View the interactive diff](#)** _(first run may take ~1 min to go live)_
 
 When no refactorings are found, the comment reads _"No refactorings detected in this change."_ The action reuses the same comment across pushes to a PR rather than posting a new one each time.
 

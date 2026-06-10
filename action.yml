@@ -15,7 +15,12 @@ inputs:
     description: 'RefactoringMiner Docker image to use (e.g. tsantalis/refactoringminer:3.0.9)'
     required: false
     default: 'tsantalis/refactoringminer:latest'
+  enable-web-view:
+    description: 'Export the interactive AST-diff view and link it in the PR comment (GitHub Pages on public repos, workflow artifact otherwise)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'node24'
   main: 'dist/index.js'
+  
