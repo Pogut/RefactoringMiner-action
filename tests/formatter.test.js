@@ -66,19 +66,21 @@ describe('buildComment', () => {
   });
 });
 
-describe('buildComment diff links', () => {
+describe('buildComment class-name links', () => {
   const crypto = require('crypto');
-  const ctx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r' };
   const sha = 'a'.repeat(40);
+  const prCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', prNumber: 9 };
+  const pushCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r' };
   const anchor = p => 'diff-' + crypto.createHash('sha256').update(p, 'utf8').digest('hex');
+  const filesBase = 'https://github.com/o/r/pull/9/files';
 
-  function withLocations() {
+  function renameAttribute() {
     return {
       commits: [{
         sha1: sha,
         refactorings: [{
           type: 'Rename Attribute',
-          description: 'Rename Attribute fullName to displayName',
+          description: 'Rename Attribute fullName : String to displayName : String in class CustomerProfile',
           rightSideLocations: [{ filePath: 'src/main/java/CustomerProfile.java', startLine: 12 }],
           leftSideLocations: [{ filePath: 'src/main/java/CustomerProfile.java', startLine: 9 }],
         }],
@@ -86,68 +88,76 @@ describe('buildComment diff links', () => {
     };
   }
 
-  test('appends a commit link targeting the right-side line', () => {
-    const body = buildComment(withLocations(), undefined, ctx);
-    const expected = `https://github.com/o/r/commit/${sha}#${anchor('src/main/java/CustomerProfile.java')}R12`;
-    expect(body).toContain(`[↗ view diff](${expected})`);
+  // Two classes: source linked at its old line (L), target at its new line (R).
+  function moveAttribute() {
+    return {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Move Attribute',
+          description: 'Move Attribute private street : String from class CustomerProfile to class Address',
+          leftSideLocations: [{ filePath: 'CustomerProfile.java', startLine: 30 }],
+          rightSideLocations: [{ filePath: 'Address.java', startLine: 8 }],
+        }],
+      }],
+    };
+  }
+
+  test('links the class name to the PR Files-changed tab at the right-side line', () => {
+    const body = buildComment(renameAttribute(), undefined, prCtx);
+    const href = `${filesBase}#${anchor('src/main/java/CustomerProfile.java')}R12`;
+    expect(body).toContain(`in class [CustomerProfile](${href})`);
+    expect(body).not.toContain('view diff');
   });
 
   test('hashes root-level paths too (not the literal filename)', () => {
+    const body = buildComment(moveAttribute(), undefined, prCtx);
+    expect(body).toContain(`#${anchor('Address.java')}R8`);
+    expect(body).not.toContain('#diff-Address.java');
+  });
+
+  test('gives each class in a two-class refactoring its own file, line and side', () => {
+    const body = buildComment(moveAttribute(), undefined, prCtx);
+    expect(body).toContain(`class [CustomerProfile](${filesBase}#${anchor('CustomerProfile.java')}L30)`);
+    expect(body).toContain(`class [Address](${filesBase}#${anchor('Address.java')}R8)`);
+  });
+
+  test('does not link an identifier that is a substring of another class name', () => {
+    // 'class Account' must not match inside 'class AdminAccount'.
     const data = {
       commits: [{
         sha1: sha,
         refactorings: [{
-          type: 'Encapsulate Attribute',
-          description: 'Encapsulate Attribute loyaltyPoints',
-          rightSideLocations: [{ filePath: 'CustomerProfile.java', startLine: 3 }],
+          type: 'Pull Up Method',
+          description: 'Pull Up Method displayName from class AdminAccount to class Account',
+          leftSideLocations: [{ filePath: 'AdminAccount.java', startLine: 5 }],
+          rightSideLocations: [{ filePath: 'Account.java', startLine: 11 }],
         }],
       }],
     };
-    const body = buildComment(data, undefined, ctx);
-    expect(body).toContain(`#${anchor('CustomerProfile.java')}R3`);
-    expect(body).not.toContain('#diff-CustomerProfile.java');
+    const body = buildComment(data, undefined, prCtx);
+    expect(body).toContain(`class [AdminAccount](${filesBase}#${anchor('AdminAccount.java')}L5)`);
+    expect(body).toContain(`class [Account](${filesBase}#${anchor('Account.java')}R11)`);
+    // No broken nested link formed inside 'AdminAccount'.
+    expect(body).not.toContain('Admin[Account');
   });
 
-  test('falls back to the left side when no right-side location exists', () => {
-    const data = {
-      commits: [{
-        sha1: sha,
-        refactorings: [{
-          type: 'Inline Method',
-          description: 'Inline Method centsToDollars',
-          leftSideLocations: [{ filePath: 'OrderProcessor.java', startLine: 7 }],
-        }],
-      }],
-    };
-    const body = buildComment(data, undefined, ctx);
-    expect(body).toContain(`#${anchor('OrderProcessor.java')}L7`);
+  test('on a push (no PR) links the class name to the commit page', () => {
+    const body = buildComment(renameAttribute(), undefined, pushCtx);
+    const href = `https://github.com/o/r/commit/${sha}#${anchor('src/main/java/CustomerProfile.java')}R12`;
+    expect(body).toContain(`in class [CustomerProfile](${href})`);
   });
 
-  test('prefers the commit url emitted by RefactoringMiner', () => {
-    const data = {
-      commits: [{
-        sha1: sha,
-        url: 'https://ghe.example.com/o/r/commit/deadbeef',
-        refactorings: [{
-          type: 'Rename Attribute',
-          description: 'x',
-          rightSideLocations: [{ filePath: 'A.java', startLine: 1 }],
-        }],
-      }],
-    };
-    const body = buildComment(data, undefined, ctx);
-    expect(body).toContain(`https://ghe.example.com/o/r/commit/deadbeef#${anchor('A.java')}R1`);
+  test('leaves the description plain when context is missing', () => {
+    const body = buildComment(renameAttribute());
+    expect(body).not.toContain('](http');
+    expect(body).toContain('in class CustomerProfile');
   });
 
-  test('omits the link when context is missing', () => {
-    const body = buildComment(withLocations());
-    expect(body).not.toContain('view diff');
-    expect(body).toContain('- **Rename Attribute** — Rename Attribute fullName to displayName');
-  });
-
-  test('omits the link when locations are missing', () => {
-    const body = buildComment(twoExtractOneRename(), undefined, ctx);
-    expect(body).not.toContain('view diff');
+  test('leaves the description plain when locations are missing', () => {
+    const body = buildComment(twoExtractOneRename(), undefined, prCtx);
+    expect(body).not.toContain('](http');
+    expect(body).toContain('- **Extract Method** — extract foo');
   });
 });
 
