@@ -16,21 +16,24 @@ async function postOrUpdateComment(token, body, eventPath, octokit = getOctokit(
 
   const existing = comments.find(c => c.body.startsWith(COMMENT_HEADER));
 
+  // Delete the previous report and post a fresh one, so the comment always
+  // lands at the bottom of the conversation (the newest event) rather than
+  // staying pinned to wherever it was first posted. Updating in place would
+  // keep its original timeline position and force scrolling up to find it.
   if (existing) {
-    await octokit.rest.issues.updateComment({
+    await octokit.rest.issues.deleteComment({
       owner,
       repo,
       comment_id: existing.id,
-      body,
-    });
-  } else {
-    await octokit.rest.issues.createComment({
-      owner,
-      repo,
-      issue_number: prNumber,
-      body,
     });
   }
+
+  await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: prNumber,
+    body,
+  });
 }
 
 module.exports = { postOrUpdateComment, COMMENT_HEADER };
