@@ -11,6 +11,7 @@ const { COMMENT_HEADER } = require('../src/formatter');
 
 const mockCreateComment = jest.fn().mockResolvedValue({});
 const mockUpdateComment = jest.fn().mockResolvedValue({});
+const mockDeleteComment = jest.fn().mockResolvedValue({});
 const mockListComments = jest.fn();
 
 describe('postOrUpdateComment', () => {
@@ -25,6 +26,7 @@ describe('postOrUpdateComment', () => {
         issues: {
           createComment: mockCreateComment,
           updateComment: mockUpdateComment,
+          deleteComment: mockDeleteComment,
           listComments: mockListComments,
         },
       },
@@ -44,7 +46,7 @@ describe('postOrUpdateComment', () => {
       mockListComments.mockResolvedValue({ data: [] });
     });
 
-    test('creates a new comment', async () => {
+    test('creates a new comment and deletes nothing', async () => {
       await postOrUpdateComment('token', 'test body', '/fake/event.json');
 
       expect(mockCreateComment).toHaveBeenCalledWith({
@@ -53,7 +55,7 @@ describe('postOrUpdateComment', () => {
         issue_number: 42,
         body: 'test body',
       });
-      expect(mockUpdateComment).not.toHaveBeenCalled();
+      expect(mockDeleteComment).not.toHaveBeenCalled();
     });
 
     test('authenticates with the provided token', async () => {
@@ -111,17 +113,22 @@ describe('postOrUpdateComment', () => {
       });
     });
 
-    test('updates the existing comment instead of creating a new one', async () => {
+    test('deletes the old comment and posts a fresh one at the bottom', async () => {
       const newBody = `${COMMENT_HEADER}\nFound 3 refactorings`;
       await postOrUpdateComment('token', newBody, '/fake/event.json');
 
-      expect(mockUpdateComment).toHaveBeenCalledWith({
+      expect(mockDeleteComment).toHaveBeenCalledWith({
         owner: 'owner',
         repo: 'repo',
         comment_id: existingCommentId,
+      });
+      expect(mockCreateComment).toHaveBeenCalledWith({
+        owner: 'owner',
+        repo: 'repo',
+        issue_number: 42,
         body: newBody,
       });
-      expect(mockCreateComment).not.toHaveBeenCalled();
+      expect(mockUpdateComment).not.toHaveBeenCalled();
     });
 
     test('matches the bot comment by COMMENT_HEADER prefix', async () => {
@@ -131,7 +138,7 @@ describe('postOrUpdateComment', () => {
 
       await postOrUpdateComment('token', 'new body', '/fake/event.json');
 
-      expect(mockUpdateComment).toHaveBeenCalledWith(
+      expect(mockDeleteComment).toHaveBeenCalledWith(
         expect.objectContaining({ comment_id: 99 })
       );
     });
