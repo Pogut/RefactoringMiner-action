@@ -1,4 +1,152 @@
+const crypto = require('node:crypto');
+
 const COMMENT_HEADER = '### RefactoringMiner Report';
+
+/**
+ * GitHub's per-file diff anchor is `diff-<hex(sha256(pathRelativeToRepoRoot))>`.
+ * Root files are hashed too: `A.java` -> sha256("A.java"), not the literal name.
+ * @param {string} filePath repo-root-relative path
+ * @returns {string}
+ */
+function fileAnchor(filePath) {
+  return 'diff-' + crypto.createHash('sha256').update(filePath, 'utf8').digest('hex');
+}
+
+/**
+ * Resolves the commit base URL for a refactoring (push events). Prefers the
+ * commit URL RefactoringMiner emits; otherwise builds one from the context.
+ * @returns {string} e.g. https://github.com/o/r/commit/<sha>, or '' if unknown
+ */
+function commitBase(ctx, r) {
+  if (r._url && /\/commit\/[0-9a-f]+/i.test(r._url)) {
+    return r._url.split('#')[0];
+  }
+  if (ctx?.owner && ctx.repo && r._sha) {
+    const server = ctx.serverUrl || 'https://github.com';
+    return `${server}/${ctx.owner}/${ctx.repo}/commit/${r._sha}`;
+  }
+  return '';
+}
+
+/**
+ * The base GitHub URL to anchor diffs against. On a pull request this is the
+ * "Files changed" tab (`.../pull/<n>/files`), whose `#diff-<hash><R|L><line>`
+ * anchors open the change in diff context and resolve to the exact line on a
+ * fresh page load (i.e. opened in a new tab). On a push, falls back to the
+ * commit page. Returns '' when context is missing.
+ * @returns {string}
+ */
+function linkBase(ctx, r) {
+  if (ctx?.prNumber && ctx.owner && ctx.repo) {
+    const server = ctx.serverUrl || 'https://github.com';
+    return `${server}/${ctx.owner}/${ctx.repo}/pull/${ctx.prNumber}/files`;
+  }
+  return commitBase(ctx, r);
+}
+
+/** Simple class name from a repo-relative path: "src/main/A.java" -> "A". */
+function classSimpleName(filePath) {
+  if (!filePath) {
+    return '';
+  }
+  const base = filePath.substring(filePath.lastIndexOf('/') + 1);
+  return base.endsWith('.java') ? base.slice(0, -5) : base;
+}
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/**
+ * Maps each involved class name to its diff-line anchor on the Files-changed
+ * tab. The after-state file is linked at its new line (`R`); a file seen only
+ * on the before-state at its old line (`L`). Right side is recorded first, so a
+ * file changed in place wins its after-state line.
+ * @returns {Map<string, string>} className -> full href
+ */
+function classLinks(base, r) {
+  const map = new Map();
+  const add = (locations, side) => {
+    for (const loc of locations || []) {
+      const name = classSimpleName(loc.filePath);
+      if (name && loc.startLine && !map.has(name)) {
+        map.set(name, `${base}#${fileAnchor(loc.filePath)}${side}${loc.startLine}`);
+      }
+    }
+  };
+  add(r.rightSideLocations, 'R');
+  add(r.leftSideLocations, 'L');
+  return map;
+}
+
+/**
+ * Renders a refactoring's description with each class name turned into a link
+ * to its changed line in the diff. Only names written as "class <Name>" are
+ * linked (so identifiers inside code snippets are left alone). Degrades to the
+ * plain description when context or locations are missing.
+ * @returns {string}
+ */
+function linkifyDescription(ctx, r) {
+  const description = r.description || '';
+  const base = linkBase(ctx, r);
+  if (!base) {
+    return description;
+  }
+  let out = description;
+  for (const [name, href] of classLinks(base, r)) {
+    const re = new RegExp('(?<=class )' + escapeRegExp(name) + String.raw`\b`, 'g');
+    out = out.replace(re, `[${name}](${href})`);
+  }
+  return out;
+}
+
+/**
+ * Wraps code in markdown inline code. When the content itself contains
+ * backticks, widens the fence and pads with spaces per CommonMark, so
+ * signatures never break the span.
+ * @returns {string}
+ */
+function inlineCode(s) {
+  const longestRun = (s.match(/`+/g) || []).reduce((m, run) => Math.max(m, run.length), 0);
+  const fence = '`'.repeat(longestRun + 1);
+  const pad = longestRun > 0 ? ' ' : '';
+  return `${fence}${pad}${s}${pad}${fence}`;
+}
+
+/**
+ * Renders a refactoring description using the markup RefactoringMiner already
+ * produced (`r.htmlDescription`): `<code>` spans become inline code and class
+ * `<a>` tags become links to their changed line. The leading `<b>name</b>` is
+ * dropped because the type is already shown as the bold bullet prefix. Falls
+ * back to {@link linkifyDescription} when the field is absent (e.g. an older
+ * image), so the comment degrades cleanly.
+ * @returns {string}
+ */
+function renderDescription(ctx, r) {
+  const html = r.htmlDescription;
+  if (!html) {
+    return linkifyDescription(ctx, r);
+  }
+  const base = linkBase(ctx, r);
+  const links = base ? classLinks(base, r) : new Map();
+  // Only the three known tags are translated; everything else (including raw
+  // '<'/'>' from generics inside <code>) passes through literally.
+  const body = html.replace(/^<b>[\s\S]*?<\/b>\s*/, '');
+  return body.replace(
+    /<code>([\s\S]*?)<\/code>|<a href="">([\s\S]*?)<\/a>|<b>([\s\S]*?)<\/b>/g,
+    (match, code, link, bold) => {
+      if (code !== undefined) {
+        return inlineCode(code);
+      }
+      if (link !== undefined) {
+        const simple = link.substring(link.lastIndexOf('.') + 1);
+        const href = links.get(simple);
+        return href ? `[${link}](${href})` : link;
+      }
+      return `**${bold}**`;
+    }
+  );
+}
 
 /**
  * Renders the optional "view the interactive diff" footer.
@@ -17,12 +165,15 @@ function viewFooter(view) {
 
 /**
  * Builds a markdown comment body from RefactoringMiner's JSON output.
- * @param {{ commits: Array<{ refactorings: Array<{ type: string, description: string }> }> }} data
+ * @param {{ commits: Array<{ sha1?: string, url?: string, refactorings: Array<{ type: string, description: string, htmlDescription?: string, leftSideLocations?: Array<object>, rightSideLocations?: Array<object> }> }> }} data
  * @param {{ url: string, kind: 'pages' | 'artifact' }} [view] Optional interactive-view link.
+ * @param {{ serverUrl?: string, owner?: string, repo?: string, prNumber?: number }} [ctx] Repo/PR context for building per-line diff links.
  * @returns {string}
  */
-function buildComment(data, view) {
-  const all = data.commits.flatMap(c => c.refactorings);
+function buildComment(data, view, ctx) {
+  const all = data.commits.flatMap(c =>
+    (c.refactorings || []).map(r => ({ ...r, _sha: c.sha1, _url: c.url }))
+  );
   const footer = viewFooter(view);
 
   if (all.length === 0) {
@@ -39,7 +190,7 @@ function buildComment(data, view) {
     .join(', ');
 
   const details = all
-    .map(r => `- **${r.type}** — ${r.description}`)
+    .map(r => `- **${r.type}** — ${renderDescription(ctx, r)}`)
     .join('\n');
 
   return `${COMMENT_HEADER}\nFound ${all.length} refactorings: ${breakdown}\n\n${details}${footer}`;
