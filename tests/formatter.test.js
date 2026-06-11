@@ -67,7 +67,7 @@ describe('buildComment', () => {
 });
 
 describe('buildComment class-name links', () => {
-  const crypto = require('crypto');
+  const crypto = require('node:crypto');
   const sha = 'a'.repeat(40);
   const prCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', prNumber: 9 };
   const pushCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r' };
@@ -162,7 +162,7 @@ describe('buildComment class-name links', () => {
 });
 
 describe('buildComment htmlDescription rendering', () => {
-  const crypto = require('crypto');
+  const crypto = require('node:crypto');
   const sha = 'a'.repeat(40);
   const prCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', prNumber: 9 };
   const anchor = p => 'diff-' + crypto.createHash('sha256').update(p, 'utf8').digest('hex');
@@ -246,6 +246,141 @@ describe('buildComment htmlDescription rendering', () => {
     const body = buildComment(data, undefined, prCtx);
     expect(body).toContain(`in class [CustomerProfile](${filesBase}#${anchor('CustomerProfile.java')}R12)`);
     expect(body).not.toContain('`');
+  });
+});
+
+describe('buildComment coverage — commit URLs, defaults & html edge cases', () => {
+  const crypto = require('node:crypto');
+  const sha = 'a'.repeat(40);
+  const anchor = p => 'diff-' + crypto.createHash('sha256').update(p, 'utf8').digest('hex');
+
+  // A one-class Rename Attribute on Widget.java, line 7 (right side).
+  function renameInWidget(commitExtra = {}) {
+    return {
+      commits: [{
+        sha1: sha,
+        ...commitExtra,
+        refactorings: [{
+          type: 'Rename Attribute',
+          description: 'Rename Attribute a : int to b : int in class Widget',
+          rightSideLocations: [{ filePath: 'Widget.java', startLine: 7 }],
+        }],
+      }],
+    };
+  }
+
+  test('push: prefers the commit URL RefactoringMiner emits, stripped of its #fragment', () => {
+    // ctx points at github.com, but the emitted commit URL is on a GHE host and must win.
+    const data = renameInWidget({ url: `https://ghe.example.com/o/r/commit/${sha}#diff-old` });
+    const body = buildComment(data, undefined, { serverUrl: 'https://github.com', owner: 'o', repo: 'r' });
+    expect(body).toContain(`in class [Widget](https://ghe.example.com/o/r/commit/${sha}#${anchor('Widget.java')}R7)`);
+  });
+
+  test('push: ignores a non-commit URL and builds the commit page from context (default server)', () => {
+    const data = renameInWidget({ url: 'https://github.com/o/r/pull/9' }); // not a /commit/ URL
+    const body = buildComment(data, undefined, { owner: 'o', repo: 'r' });  // no serverUrl -> default
+    expect(body).toContain(`in class [Widget](https://github.com/o/r/commit/${sha}#${anchor('Widget.java')}R7)`);
+  });
+
+  test('push with neither a commit URL nor a sha leaves the description plain', () => {
+    const data = {
+      commits: [{
+        refactorings: [{
+          type: 'Rename Attribute',
+          description: 'Rename Attribute a : int to b : int in class Widget',
+          rightSideLocations: [{ filePath: 'Widget.java', startLine: 7 }],
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, { owner: 'o', repo: 'r' }); // no prNumber, no sha1, no url
+    expect(body).toContain('in class Widget');
+    expect(body).not.toContain('](http');
+  });
+
+  test('PR: defaults the server to github.com when serverUrl is absent', () => {
+    const body = buildComment(renameInWidget(), undefined, { owner: 'o', repo: 'r', prNumber: 9 });
+    expect(body).toContain(`https://github.com/o/r/pull/9/files#${anchor('Widget.java')}R7`);
+  });
+
+  test('skips a location that has no filePath (class name stays plain)', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Extract Class',
+          description: 'Extract Class from class Orphan',
+          rightSideLocations: [{ startLine: 5 }], // no filePath
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, { owner: 'o', repo: 'r', prNumber: 9 });
+    expect(body).toContain('from class Orphan');
+    expect(body).not.toContain('](http');
+  });
+
+  test('renders an additional <b> tag in the html body as markdown bold', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Change Return Type',
+          description: 'plain',
+          htmlDescription: '<b>Change Return Type</b> <code>int</code> to <code>long</code> in method <b>compute</b>',
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, { owner: 'o', repo: 'r', prNumber: 9 });
+    expect(body).toContain('in method **compute**');
+    expect(body).toContain('`int`');
+    expect(body).not.toContain('Change Return Type</b>'); // leading bold stripped, not duplicated
+  });
+
+  test('omits the footer when the view object has no url', () => {
+    const body = buildComment(twoExtractOneRename(), { kind: 'pages' });
+    expect(body).not.toContain('View the interactive diff');
+  });
+
+  test('treats a commit with no refactorings field as empty', () => {
+    const data = { commits: [{ sha1: sha }, { refactorings: [{ type: 'Extract Method', description: 'x' }] }] };
+    const body = buildComment(data);
+    expect(body).toContain('Found 1 refactorings');
+  });
+
+  test('keeps the file extension in the simple name for non-.java files', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Rename Class',
+          description: 'Rename Class in class Widget.kt',
+          rightSideLocations: [{ filePath: 'Widget.kt', startLine: 4 }],
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, { owner: 'o', repo: 'r', prNumber: 9 });
+    expect(body).toContain(`[Widget.kt](https://github.com/o/r/pull/9/files#${anchor('Widget.kt')}R4)`);
+  });
+
+  test('handles a refactoring with no description field', () => {
+    const data = { commits: [{ sha1: sha, refactorings: [{ type: 'Extract Method' }] }] };
+    const body = buildComment(data, undefined, { owner: 'o', repo: 'r', prNumber: 9 });
+    expect(body).toContain('- **Extract Method** — ');
+  });
+
+  test('html rendering without context leaves class <a> tags as plain text', () => {
+    const data = {
+      commits: [{
+        refactorings: [{
+          type: 'Move Class',
+          description: 'plain',
+          htmlDescription: '<b>Move Class</b> <code>A</code> in class <a href="">Foo</a>',
+        }],
+      }],
+    };
+    const body = buildComment(data); // no ctx -> empty base -> empty link map
+    expect(body).toContain('`A`');
+    expect(body).toContain('in class Foo');
+    expect(body).not.toContain('[Foo]');
   });
 });
 

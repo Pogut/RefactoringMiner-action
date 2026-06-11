@@ -81855,7 +81855,7 @@ module.exports = { exportWebDiff, buildAnalysisUrl };
 /***/ 59315:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
-const crypto = __nccwpck_require__(76982);
+const crypto = __nccwpck_require__(77598);
 
 const COMMENT_HEADER = '### RefactoringMiner Report';
 
@@ -81878,7 +81878,7 @@ function commitBase(ctx, r) {
   if (r._url && /\/commit\/[0-9a-f]+/i.test(r._url)) {
     return r._url.split('#')[0];
   }
-  if (ctx && ctx.owner && ctx.repo && r._sha) {
+  if (ctx?.owner && ctx.repo && r._sha) {
     const server = ctx.serverUrl || 'https://github.com';
     return `${server}/${ctx.owner}/${ctx.repo}/commit/${r._sha}`;
   }
@@ -81894,7 +81894,7 @@ function commitBase(ctx, r) {
  * @returns {string}
  */
 function linkBase(ctx, r) {
-  if (ctx && ctx.prNumber && ctx.owner && ctx.repo) {
+  if (ctx?.prNumber && ctx.owner && ctx.repo) {
     const server = ctx.serverUrl || 'https://github.com';
     return `${server}/${ctx.owner}/${ctx.repo}/pull/${ctx.prNumber}/files`;
   }
@@ -81911,7 +81911,7 @@ function classSimpleName(filePath) {
 }
 
 function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /**
@@ -81951,7 +81951,7 @@ function linkifyDescription(ctx, r) {
   }
   let out = description;
   for (const [name, href] of classLinks(base, r)) {
-    const re = new RegExp('(?<=class )' + escapeRegExp(name) + '\\b', 'g');
+    const re = new RegExp('(?<=class )' + escapeRegExp(name) + String.raw`\b`, 'g');
     out = out.replace(re, `[${name}](${href})`);
   }
   return out;
