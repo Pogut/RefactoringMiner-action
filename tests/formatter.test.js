@@ -161,6 +161,94 @@ describe('buildComment class-name links', () => {
   });
 });
 
+describe('buildComment htmlDescription rendering', () => {
+  const crypto = require('crypto');
+  const sha = 'a'.repeat(40);
+  const prCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', prNumber: 9 };
+  const anchor = p => 'diff-' + crypto.createHash('sha256').update(p, 'utf8').digest('hex');
+  const filesBase = 'https://github.com/o/r/pull/9/files';
+
+  // Mirrors RefactoringMiner's JSON: toHTMLString() with the leading tab replaced by a space.
+  function renameMethod() {
+    return {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Rename Method',
+          description: 'plain',
+          htmlDescription: '<b>Rename Method</b> <code>private formatPaymentStatus(total int, discount int) : String</code>'
+            + ' renamed to <code>private describePaymentStatus(total int, discount int) : String</code>'
+            + ' in class <a href="">OrderProcessor</a>',
+          rightSideLocations: [{ filePath: 'OrderProcessor.java', startLine: 7 }],
+          leftSideLocations: [{ filePath: 'OrderProcessor.java', startLine: 7 }],
+        }],
+      }],
+    };
+  }
+
+  test('wraps code spans in inline code and drops the leading bold name', () => {
+    const body = buildComment(renameMethod(), undefined, prCtx);
+    expect(body).toContain('`private formatPaymentStatus(total int, discount int) : String`');
+    expect(body).toContain('`private describePaymentStatus(total int, discount int) : String`');
+    expect(body).toContain('- **Rename Method** — `private formatPaymentStatus');
+    // The html's own <b>name</b> must be stripped (no leftover tag, no duplicate name).
+    expect(body).not.toContain('Rename Method</b>');
+    expect(body).not.toContain('<code>');
+  });
+
+  test('turns the class <a> into a line link', () => {
+    const body = buildComment(renameMethod(), undefined, prCtx);
+    expect(body).toContain(`in class [OrderProcessor](${filesBase}#${anchor('OrderProcessor.java')}R7)`);
+  });
+
+  test('renders an unmapped class name as plain text (no dead link)', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Move Class',
+          description: 'plain',
+          htmlDescription: '<b>Move Class</b> <code>A</code> moved to <code>B</code> from class <a href="">Mystery</a>',
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, prCtx);
+    expect(body).toContain('from class Mystery');
+    expect(body).not.toContain('[Mystery]');
+  });
+
+  test('widens the fence when code contains a backtick', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Rename Variable',
+          description: 'plain',
+          htmlDescription: '<b>Rename Variable</b> <code>a`b</code>',
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, prCtx);
+    expect(body).toContain('`` a`b ``');
+  });
+
+  test('falls back to plain text plus class link when htmlDescription is absent', () => {
+    const data = {
+      commits: [{
+        sha1: sha,
+        refactorings: [{
+          type: 'Rename Attribute',
+          description: 'Rename Attribute fullName : String to displayName : String in class CustomerProfile',
+          rightSideLocations: [{ filePath: 'CustomerProfile.java', startLine: 12 }],
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, prCtx);
+    expect(body).toContain(`in class [CustomerProfile](${filesBase}#${anchor('CustomerProfile.java')}R12)`);
+    expect(body).not.toContain('`');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
