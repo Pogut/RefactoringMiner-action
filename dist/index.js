@@ -81853,29 +81853,52 @@ module.exports = { exportWebDiff, buildAnalysisUrl };
 /***/ }),
 
 /***/ 59315:
-/***/ ((module) => {
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const crypto = __nccwpck_require__(76982);
 
 const COMMENT_HEADER = '### RefactoringMiner Report';
 
 /**
- * Links to a file line on GitHub as a blob permalink
- * (`.../blob/<sha>/<path>#L<line>`). Unlike a Files-changed diff anchor, a blob
- * line anchor scrolls to and highlights the line reliably even on GitHub's
- * in-app (Turbo) navigation, so it works in the same tab. The after-state line
- * (`R`) is pinned at the head commit; a before-state line (`L`) at the base
- * commit (falling back to head when no base is known, e.g. push events).
- * @returns {string|null} full href, or null when context is insufficient
+ * GitHub's per-file diff anchor is `diff-<hex(sha256(pathRelativeToRepoRoot))>`.
+ * Root files are hashed too: `A.java` -> sha256("A.java"), not the literal name.
+ * @param {string} filePath repo-root-relative path
+ * @returns {string}
  */
-function blobLink(ctx, filePath, line, side) {
-  if (!ctx || !ctx.owner || !ctx.repo || !filePath || !line) {
-    return null;
+function fileAnchor(filePath) {
+  return 'diff-' + crypto.createHash('sha256').update(filePath, 'utf8').digest('hex');
+}
+
+/**
+ * Resolves the commit base URL for a refactoring (push events). Prefers the
+ * commit URL RefactoringMiner emits; otherwise builds one from the context.
+ * @returns {string} e.g. https://github.com/o/r/commit/<sha>, or '' if unknown
+ */
+function commitBase(ctx, r) {
+  if (r._url && /\/commit\/[0-9a-f]+/i.test(r._url)) {
+    return r._url.split('#')[0];
   }
-  const sha = (side === 'L' ? ctx.baseSha : ctx.headSha) || ctx.headSha;
-  if (!sha) {
-    return null;
+  if (ctx && ctx.owner && ctx.repo && r._sha) {
+    const server = ctx.serverUrl || 'https://github.com';
+    return `${server}/${ctx.owner}/${ctx.repo}/commit/${r._sha}`;
   }
-  const server = ctx.serverUrl || 'https://github.com';
-  return `${server}/${ctx.owner}/${ctx.repo}/blob/${sha}/${filePath}#L${line}`;
+  return '';
+}
+
+/**
+ * The base GitHub URL to anchor diffs against. On a pull request this is the
+ * "Files changed" tab (`.../pull/<n>/files`), whose `#diff-<hash><R|L><line>`
+ * anchors open the change in diff context and resolve to the exact line on a
+ * fresh page load (i.e. opened in a new tab). On a push, falls back to the
+ * commit page. Returns '' when context is missing.
+ * @returns {string}
+ */
+function linkBase(ctx, r) {
+  if (ctx && ctx.prNumber && ctx.owner && ctx.repo) {
+    const server = ctx.serverUrl || 'https://github.com';
+    return `${server}/${ctx.owner}/${ctx.repo}/pull/${ctx.prNumber}/files`;
+  }
+  return commitBase(ctx, r);
 }
 
 /** Simple class name from a repo-relative path: "src/main/A.java" -> "A". */
@@ -81892,22 +81915,19 @@ function escapeRegExp(s) {
 }
 
 /**
- * Maps each involved class name to a blob link at its own line. The after-state
- * file is linked at its new line (head commit, `R`); a file seen only on the
- * before-state at its old line (base commit, `L`). Right side is recorded
- * first, so a file changed in place wins its after-state line.
+ * Maps each involved class name to its diff-line anchor on the Files-changed
+ * tab. The after-state file is linked at its new line (`R`); a file seen only
+ * on the before-state at its old line (`L`). Right side is recorded first, so a
+ * file changed in place wins its after-state line.
  * @returns {Map<string, string>} className -> full href
  */
-function classLinks(ctx, r) {
+function classLinks(base, r) {
   const map = new Map();
   const add = (locations, side) => {
     for (const loc of locations || []) {
       const name = classSimpleName(loc.filePath);
       if (name && loc.startLine && !map.has(name)) {
-        const href = blobLink(ctx, loc.filePath, loc.startLine, side);
-        if (href) {
-          map.set(name, href);
-        }
+        map.set(name, `${base}#${fileAnchor(loc.filePath)}${side}${loc.startLine}`);
       }
     }
   };
@@ -81917,20 +81937,20 @@ function classLinks(ctx, r) {
 }
 
 /**
- * Renders a refactoring's description with each class name turned into a blob
- * link to its line. Only names written as "class <Name>" are linked (so
- * identifiers inside code snippets are left alone). Degrades to the plain
- * description when context or locations are missing.
+ * Renders a refactoring's description with each class name turned into a link
+ * to its changed line in the diff. Only names written as "class <Name>" are
+ * linked (so identifiers inside code snippets are left alone). Degrades to the
+ * plain description when context or locations are missing.
  * @returns {string}
  */
 function linkifyDescription(ctx, r) {
   const description = r.description || '';
-  const links = classLinks(ctx, r);
-  if (links.size === 0) {
+  const base = linkBase(ctx, r);
+  if (!base) {
     return description;
   }
   let out = description;
-  for (const [name, href] of links) {
+  for (const [name, href] of classLinks(base, r)) {
     const re = new RegExp('(?<=class )' + escapeRegExp(name) + '\\b', 'g');
     out = out.replace(re, `[${name}](${href})`);
   }
@@ -81964,7 +81984,8 @@ function renderDescription(ctx, r) {
   if (!html) {
     return linkifyDescription(ctx, r);
   }
-  const links = classLinks(ctx, r);
+  const base = linkBase(ctx, r);
+  const links = base ? classLinks(base, r) : new Map();
   // Only the three known tags are translated; everything else (including raw
   // '<'/'>' from generics inside <code>) passes through literally.
   const body = html.replace(/^<b>[\s\S]*?<\/b>\s*/, '');
@@ -82003,7 +82024,7 @@ function viewFooter(view) {
  * Builds a markdown comment body from RefactoringMiner's JSON output.
  * @param {{ commits: Array<{ sha1?: string, url?: string, refactorings: Array<{ type: string, description: string, htmlDescription?: string, leftSideLocations?: Array<object>, rightSideLocations?: Array<object> }> }> }} data
  * @param {{ url: string, kind: 'pages' | 'artifact' }} [view] Optional interactive-view link.
- * @param {{ serverUrl?: string, owner?: string, repo?: string, headSha?: string, baseSha?: string }} [ctx] Repo/commit context for building per-line blob links.
+ * @param {{ serverUrl?: string, owner?: string, repo?: string, prNumber?: number }} [ctx] Repo/PR context for building per-line diff links.
  * @returns {string}
  */
 function buildComment(data, view, ctx) {
@@ -133585,11 +133606,8 @@ async function run() {
       view = await buildView({ octokit, token, serverUrl, owner, repo, runId, image, eventName, eventPath, event });
     }
 
-    // Blob line links are pinned to commits: head for after-state lines, base
-    // for before-state. On a push there is no PR, so link both at the pushed commit.
-    const headSha = eventName === 'pull_request' ? event.pull_request.head.sha : process.env.GITHUB_SHA;
-    const baseSha = eventName === 'pull_request' ? event.pull_request.base.sha : undefined;
-    const body = buildComment(data, view, { serverUrl, owner, repo, headSha, baseSha });
+    const prNumber = eventName === 'pull_request' ? event.pull_request.number : undefined;
+    const body = buildComment(data, view, { serverUrl, owner, repo, prNumber });
 
     if (eventName === 'pull_request') {
       await postOrUpdateComment(token, body, eventPath, octokit);
