@@ -38,7 +38,7 @@ jobs:
     name: SonarCloud
     needs: test
     runs-on: ubuntu-latest
-    environment: RM
+    environment: RefactoringMiner
     steps:
       - uses: actions/checkout@v4
         with:
