@@ -67,17 +67,15 @@ describe('buildComment', () => {
 });
 
 describe('buildComment class-name links', () => {
-  const crypto = require('crypto');
-  const sha = 'a'.repeat(40);
-  const prCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', prNumber: 9 };
-  const pushCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r' };
-  const anchor = p => 'diff-' + crypto.createHash('sha256').update(p, 'utf8').digest('hex');
-  const filesBase = 'https://github.com/o/r/pull/9/files';
+  const headSha = 'h'.repeat(40);
+  const baseSha = 'b'.repeat(40);
+  const ctx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', headSha, baseSha };
+  const blob = (sha, path, line) => `https://github.com/o/r/blob/${sha}/${path}#L${line}`;
 
   function renameAttribute() {
     return {
       commits: [{
-        sha1: sha,
+        sha1: 'a'.repeat(40),
         refactorings: [{
           type: 'Rename Attribute',
           description: 'Rename Attribute fullName : String to displayName : String in class CustomerProfile',
@@ -88,11 +86,10 @@ describe('buildComment class-name links', () => {
     };
   }
 
-  // Two classes: source linked at its old line (L), target at its new line (R).
+  // Two classes: source linked at its old line (base, L), target at its new line (head, R).
   function moveAttribute() {
     return {
       commits: [{
-        sha1: sha,
         refactorings: [{
           type: 'Move Attribute',
           description: 'Move Attribute private street : String from class CustomerProfile to class Address',
@@ -103,30 +100,23 @@ describe('buildComment class-name links', () => {
     };
   }
 
-  test('links the class name to the PR Files-changed tab at the right-side line', () => {
-    const body = buildComment(renameAttribute(), undefined, prCtx);
-    const href = `${filesBase}#${anchor('src/main/java/CustomerProfile.java')}R12`;
-    expect(body).toContain(`in class [CustomerProfile](${href})`);
+  test('links the class name to its blob line at the head commit (right side)', () => {
+    const body = buildComment(renameAttribute(), undefined, ctx);
+    expect(body).toContain(`in class [CustomerProfile](${blob(headSha, 'src/main/java/CustomerProfile.java', 12)})`);
     expect(body).not.toContain('view diff');
   });
 
-  test('hashes root-level paths too (not the literal filename)', () => {
-    const body = buildComment(moveAttribute(), undefined, prCtx);
-    expect(body).toContain(`#${anchor('Address.java')}R8`);
-    expect(body).not.toContain('#diff-Address.java');
-  });
-
-  test('gives each class in a two-class refactoring its own file, line and side', () => {
-    const body = buildComment(moveAttribute(), undefined, prCtx);
-    expect(body).toContain(`class [CustomerProfile](${filesBase}#${anchor('CustomerProfile.java')}L30)`);
-    expect(body).toContain(`class [Address](${filesBase}#${anchor('Address.java')}R8)`);
+  test('gives each class in a two-class refactoring its own file, line and commit side', () => {
+    const body = buildComment(moveAttribute(), undefined, ctx);
+    // Source class at its old line, base commit; target class at its new line, head commit.
+    expect(body).toContain(`class [CustomerProfile](${blob(baseSha, 'CustomerProfile.java', 30)})`);
+    expect(body).toContain(`class [Address](${blob(headSha, 'Address.java', 8)})`);
   });
 
   test('does not link an identifier that is a substring of another class name', () => {
     // 'class Account' must not match inside 'class AdminAccount'.
     const data = {
       commits: [{
-        sha1: sha,
         refactorings: [{
           type: 'Pull Up Method',
           description: 'Pull Up Method displayName from class AdminAccount to class Account',
@@ -135,17 +125,26 @@ describe('buildComment class-name links', () => {
         }],
       }],
     };
-    const body = buildComment(data, undefined, prCtx);
-    expect(body).toContain(`class [AdminAccount](${filesBase}#${anchor('AdminAccount.java')}L5)`);
-    expect(body).toContain(`class [Account](${filesBase}#${anchor('Account.java')}R11)`);
+    const body = buildComment(data, undefined, ctx);
+    expect(body).toContain(`class [AdminAccount](${blob(baseSha, 'AdminAccount.java', 5)})`);
+    expect(body).toContain(`class [Account](${blob(headSha, 'Account.java', 11)})`);
     // No broken nested link formed inside 'AdminAccount'.
     expect(body).not.toContain('Admin[Account');
   });
 
-  test('on a push (no PR) links the class name to the commit page', () => {
-    const body = buildComment(renameAttribute(), undefined, pushCtx);
-    const href = `https://github.com/o/r/commit/${sha}#${anchor('src/main/java/CustomerProfile.java')}R12`;
-    expect(body).toContain(`in class [CustomerProfile](${href})`);
+  test('falls back to the head commit for a before-side line when no base is known (push)', () => {
+    const pushCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', headSha };
+    const data = {
+      commits: [{
+        refactorings: [{
+          type: 'Remove Method',
+          description: 'Remove Method gone() : void in class Legacy',
+          leftSideLocations: [{ filePath: 'Legacy.java', startLine: 4 }],
+        }],
+      }],
+    };
+    const body = buildComment(data, undefined, pushCtx);
+    expect(body).toContain(`in class [Legacy](${blob(headSha, 'Legacy.java', 4)})`);
   });
 
   test('leaves the description plain when context is missing', () => {
@@ -155,24 +154,21 @@ describe('buildComment class-name links', () => {
   });
 
   test('leaves the description plain when locations are missing', () => {
-    const body = buildComment(twoExtractOneRename(), undefined, prCtx);
+    const body = buildComment(twoExtractOneRename(), undefined, ctx);
     expect(body).not.toContain('](http');
     expect(body).toContain('- **Extract Method** — extract foo');
   });
 });
 
 describe('buildComment htmlDescription rendering', () => {
-  const crypto = require('crypto');
-  const sha = 'a'.repeat(40);
-  const prCtx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', prNumber: 9 };
-  const anchor = p => 'diff-' + crypto.createHash('sha256').update(p, 'utf8').digest('hex');
-  const filesBase = 'https://github.com/o/r/pull/9/files';
+  const headSha = 'h'.repeat(40);
+  const ctx = { serverUrl: 'https://github.com', owner: 'o', repo: 'r', headSha };
+  const blob = (sha, path, line) => `https://github.com/o/r/blob/${sha}/${path}#L${line}`;
 
   // Mirrors RefactoringMiner's JSON: toHTMLString() with the leading tab replaced by a space.
   function renameMethod() {
     return {
       commits: [{
-        sha1: sha,
         refactorings: [{
           type: 'Rename Method',
           description: 'plain',
@@ -187,7 +183,7 @@ describe('buildComment htmlDescription rendering', () => {
   }
 
   test('wraps code spans in inline code and drops the leading bold name', () => {
-    const body = buildComment(renameMethod(), undefined, prCtx);
+    const body = buildComment(renameMethod(), undefined, ctx);
     expect(body).toContain('`private formatPaymentStatus(total int, discount int) : String`');
     expect(body).toContain('`private describePaymentStatus(total int, discount int) : String`');
     expect(body).toContain('- **Rename Method** — `private formatPaymentStatus');
@@ -196,15 +192,14 @@ describe('buildComment htmlDescription rendering', () => {
     expect(body).not.toContain('<code>');
   });
 
-  test('turns the class <a> into a line link', () => {
-    const body = buildComment(renameMethod(), undefined, prCtx);
-    expect(body).toContain(`in class [OrderProcessor](${filesBase}#${anchor('OrderProcessor.java')}R7)`);
+  test('turns the class <a> into a blob line link', () => {
+    const body = buildComment(renameMethod(), undefined, ctx);
+    expect(body).toContain(`in class [OrderProcessor](${blob(headSha, 'OrderProcessor.java', 7)})`);
   });
 
   test('renders an unmapped class name as plain text (no dead link)', () => {
     const data = {
       commits: [{
-        sha1: sha,
         refactorings: [{
           type: 'Move Class',
           description: 'plain',
@@ -212,7 +207,7 @@ describe('buildComment htmlDescription rendering', () => {
         }],
       }],
     };
-    const body = buildComment(data, undefined, prCtx);
+    const body = buildComment(data, undefined, ctx);
     expect(body).toContain('from class Mystery');
     expect(body).not.toContain('[Mystery]');
   });
@@ -220,7 +215,6 @@ describe('buildComment htmlDescription rendering', () => {
   test('widens the fence when code contains a backtick', () => {
     const data = {
       commits: [{
-        sha1: sha,
         refactorings: [{
           type: 'Rename Variable',
           description: 'plain',
@@ -228,14 +222,13 @@ describe('buildComment htmlDescription rendering', () => {
         }],
       }],
     };
-    const body = buildComment(data, undefined, prCtx);
+    const body = buildComment(data, undefined, ctx);
     expect(body).toContain('`` a`b ``');
   });
 
   test('falls back to plain text plus class link when htmlDescription is absent', () => {
     const data = {
       commits: [{
-        sha1: sha,
         refactorings: [{
           type: 'Rename Attribute',
           description: 'Rename Attribute fullName : String to displayName : String in class CustomerProfile',
@@ -243,8 +236,8 @@ describe('buildComment htmlDescription rendering', () => {
         }],
       }],
     };
-    const body = buildComment(data, undefined, prCtx);
-    expect(body).toContain(`in class [CustomerProfile](${filesBase}#${anchor('CustomerProfile.java')}R12)`);
+    const body = buildComment(data, undefined, ctx);
+    expect(body).toContain(`in class [CustomerProfile](${blob(headSha, 'CustomerProfile.java', 12)})`);
     expect(body).not.toContain('`');
   });
 });

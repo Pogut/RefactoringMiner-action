@@ -36,8 +36,11 @@ async function run() {
       view = await buildView({ octokit, token, serverUrl, owner, repo, runId, image, eventName, eventPath, event });
     }
 
-    const prNumber = eventName === 'pull_request' ? event.pull_request.number : undefined;
-    const body = buildComment(data, view, { serverUrl, owner, repo, prNumber });
+    // Blob line links are pinned to commits: head for after-state lines, base
+    // for before-state. On a push there is no PR, so link both at the pushed commit.
+    const headSha = eventName === 'pull_request' ? event.pull_request.head.sha : process.env.GITHUB_SHA;
+    const baseSha = eventName === 'pull_request' ? event.pull_request.base.sha : undefined;
+    const body = buildComment(data, view, { serverUrl, owner, repo, headSha, baseSha });
 
     if (eventName === 'pull_request') {
       await postOrUpdateComment(token, body, eventPath, octokit);
