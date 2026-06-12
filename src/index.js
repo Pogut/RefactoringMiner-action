@@ -36,8 +36,7 @@ async function run() {
       view = await buildView({ octokit, token, serverUrl, owner, repo, runId, image, eventName, eventPath, event });
     }
 
-    const prNumber = eventName === 'pull_request' ? event.pull_request.number : undefined;
-    const body = buildComment(data, view, { serverUrl, owner, repo, prNumber });
+    const body = buildComment(data, view);
 
     if (eventName === 'pull_request') {
       await postOrUpdateComment(token, body, eventPath, octokit);
