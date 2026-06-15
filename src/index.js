@@ -57,7 +57,6 @@ async function run() {
 async function publishView({ octokit, token, serverUrl, owner, repo, runId, webDir, event }) {
   try {
     const prNumber = event.pull_request.number;
-   // const sha = event.pull_request.head.sha;
     const isPrivate = event.repository.private;
 
     const target = await decideTarget(octokit, owner, repo, isPrivate);
