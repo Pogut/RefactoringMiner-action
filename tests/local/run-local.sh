@@ -4,7 +4,7 @@
 #
 # It reproduces the GitHub Actions runtime (env vars + event payload + a `docker`
 # that doesn't try to pull) and invokes the compiled action at dist/index.js,
-# so the real runner.js / exporter.js / formatter.js code paths execute.
+# so the real exporter.js / formatter.js code paths execute.
 #
 # Usage:
 #   ./run-local.sh                # push/commit-analysis path (default)

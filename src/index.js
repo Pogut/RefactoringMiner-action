@@ -1,8 +1,7 @@
 const core = require('@actions/core');
 const { getOctokit } = require('@actions/github');
 const fs = require('fs');
-const { runRefactoringMiner } = require('./runner');
-const { exportWebDiff } = require('./exporter');
+const { exportDiff } = require('./exporter');
 const { buildComment } = require('./formatter');
 const { postOrUpdateComment } = require('./commenter');
 const { decideTarget, publishToPages, uploadArtifactView, cleanupPages } = require('./publisher');
@@ -15,7 +14,6 @@ async function run() {
 
     const eventName = process.env.GITHUB_EVENT_NAME;
     const eventPath = process.env.GITHUB_EVENT_PATH;
-    const workspace = process.env.GITHUB_WORKSPACE;
     const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
     const runId = process.env.GITHUB_RUN_ID;
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
@@ -29,14 +27,17 @@ async function run() {
       return;
     }
 
-    const data = await runRefactoringMiner(workspace, eventName, eventPath, image);
+    // One RefactoringMiner call produces everything we need: the interactive web
+    // diff AND the refactorings JSON whose `markup` is already linked to the
+    // exact GitHub diff lines. No separate commit-analysis run.
+    const { webDir, refactorings } = await exportDiff(eventName, eventPath, image, token);
 
     let view;
     if (enableWebView && eventName === 'pull_request') {
-      view = await buildView({ octokit, token, serverUrl, owner, repo, runId, image, eventName, eventPath, event });
+      view = await publishView({ octokit, token, serverUrl, owner, repo, runId, webDir, event });
     }
 
-    const body = buildComment(data, view);
+    const body = buildComment(refactorings, view);
 
     if (eventName === 'pull_request') {
       await postOrUpdateComment(token, body, eventPath, octokit);
@@ -49,13 +50,12 @@ async function run() {
 }
 
 /**
- * Exports the interactive diff and publishes it (Pages or artifact), returning
- * a `{ url, kind }` view descriptor. Any failure here is non-fatal: it logs a
+ * Publishes the already-exported web view (Pages or artifact) and returns a
+ * `{ url, kind }` view descriptor. Any failure here is non-fatal: it logs a
  * warning and returns undefined so the summary comment is still posted.
  */
-async function buildView({ octokit, token, serverUrl, owner, repo, runId, image, eventName, eventPath, event }) {
+async function publishView({ octokit, token, serverUrl, owner, repo, runId, webDir, event }) {
   try {
-    const webDir = await exportWebDiff(eventName, eventPath, image, token);
     const prNumber = event.pull_request.number;
     const sha = event.pull_request.head.sha;
     const isPrivate = event.repository.private;

@@ -10,9 +10,27 @@ jest.mock('fs', () => ({
 const core = require('@actions/core');
 const exec = require('@actions/exec');
 const fs = require('fs');
-const { buildAnalysisUrl, exportWebDiff } = require('../src/exporter');
+const { buildAnalysisUrl, exportDiff } = require('../src/exporter');
 
 const FAKE_TMP = '/tmp/rm-web-fakeXYZ';
+
+const REFACTORINGS_JSON = JSON.stringify({
+  url: 'https://github.com/o/r/pull/7/changes',
+  refactorings: [
+    {
+      type: 'Rename Method',
+      description: 'Rename Method a() to b()',
+      markup: '**Rename Method** [a()](https://github.com/o/r/pull/7/changes?diff=split#diff-hL1) renamed to [b()](https://github.com/o/r/pull/7/changes?diff=split#diff-hR1) in class `C`',
+    },
+  ],
+});
+
+const EVENT_JSON = JSON.stringify({ pull_request: { html_url: 'https://github.com/o/r/pull/7' } });
+
+// readFileSync serves either the event payload or refactorings.json by path.
+function fileByPath(p) {
+  return String(p).endsWith('refactorings.json') ? REFACTORINGS_JSON : EVENT_JSON;
+}
 
 // ---------------------------------------------------------------------------
 // buildAnalysisUrl
@@ -23,9 +41,7 @@ describe('buildAnalysisUrl', () => {
   afterEach(() => { process.env = originalEnv; });
 
   test('uses the PR html_url for pull_request events', () => {
-    fs.readFileSync.mockReturnValue(JSON.stringify({
-      pull_request: { html_url: 'https://github.com/o/r/pull/7' },
-    }));
+    fs.readFileSync.mockReturnValue(EVENT_JSON);
     expect(buildAnalysisUrl('pull_request', '/event.json')).toBe('https://github.com/o/r/pull/7');
   });
 
@@ -38,22 +54,20 @@ describe('buildAnalysisUrl', () => {
 });
 
 // ---------------------------------------------------------------------------
-// exportWebDiff
+// exportDiff
 // ---------------------------------------------------------------------------
-describe('exportWebDiff', () => {
+describe('exportDiff', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fs.mkdtempSync.mockReturnValue(FAKE_TMP);
-    fs.readFileSync.mockReturnValue(JSON.stringify({
-      pull_request: { html_url: 'https://github.com/o/r/pull/7' },
-    }));
+    fs.readFileSync.mockImplementation(fileByPath);
     fs.existsSync.mockReturnValue(true);
     exec.exec.mockResolvedValue(0);
     core.info.mockReturnValue(undefined);
   });
 
   test('runs the diff --url export with the analysis URL and token', async () => {
-    await exportWebDiff('pull_request', '/event.json', 'tsantalis/refactoringminer:latest', 'tok123');
+    await exportDiff('pull_request', '/event.json', 'tsantalis/refactoringminer:latest', 'tok123');
     const [cmd, args] = exec.exec.mock.calls[0];
     const script = args[args.length - 1];
     expect(cmd).toBe('docker');
@@ -64,19 +78,33 @@ describe('exportWebDiff', () => {
   });
 
   test('mounts the temp dir at the container export path', async () => {
-    await exportWebDiff('pull_request', '/event.json', 'img', 'tok');
+    await exportDiff('pull_request', '/event.json', 'img', 'tok');
     const [, args] = exec.exec.mock.calls[0];
     expect(args).toContain(`${FAKE_TMP}:/diff/exported`);
   });
 
-  test('returns the path to the exported web directory', async () => {
-    const webDir = await exportWebDiff('pull_request', '/event.json', 'img', 'tok');
+  test('returns the exported web directory path', async () => {
+    const { webDir } = await exportDiff('pull_request', '/event.json', 'img', 'tok');
     expect(webDir).toBe(`${FAKE_TMP}/web`);
+  });
+
+  test('returns the parsed refactorings from jsons/refactorings.json', async () => {
+    const { refactorings } = await exportDiff('pull_request', '/event.json', 'img', 'tok');
+    expect(refactorings).toHaveLength(1);
+    expect(refactorings[0].type).toBe('Rename Method');
+    expect(refactorings[0].markup).toContain('[a()](');
+    expect(refactorings[0].markup).toContain('in class `C`');
   });
 
   test('throws when the export did not produce a web view', async () => {
     fs.existsSync.mockReturnValue(false);
-    await expect(exportWebDiff('pull_request', '/event.json', 'img', 'tok'))
+    await expect(exportDiff('pull_request', '/event.json', 'img', 'tok'))
       .rejects.toThrow('was not produced');
+  });
+
+  test('throws when refactorings.json is missing', async () => {
+    fs.existsSync.mockImplementation((p) => !String(p).endsWith('refactorings.json'));
+    await expect(exportDiff('pull_request', '/event.json', 'img', 'tok'))
+      .rejects.toThrow('refactorings.json');
   });
 });
