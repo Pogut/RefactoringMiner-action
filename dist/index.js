@@ -81811,17 +81811,24 @@ function buildAnalysisUrl(eventName, eventPath) {
 }
 
 /**
- * Exports RefactoringMiner's interactive AST-diff web view as a self-contained
- * static site and returns the path to the generated `web/` directory.
+ * Runs RefactoringMiner's `diff --url <url> --export` once and returns both
+ * products of that single call:
+ *
+ *   - webDir: the self-contained interactive AST-diff site (`web/`), ready to
+ *     publish to Pages or upload as an artifact.
+ *   - refactorings: the parsed `jsons/refactorings.json` array. Each entry has a
+ *     `markup` field whose code elements are already linked to the exact GitHub
+ *     diff lines by RefactoringMiner itself (toMarkupStringWithGitHubLinks), so
+ *     the action never has to build those links.
  *
  * Mirrors the proven recipe from EmpiricalSEConcordia/Refactoringminer-Astdiff-Exporter:
- * `refactoringminer diff --url <url> -e` writes the diff pages, and the Monaco
- * editor + JS/CSS resources are copied out of the image's jar into web/resources.
+ * `refactoringminer diff --url <url> -e` writes the diff pages and the JSON, and
+ * the Monaco editor + JS/CSS resources are copied out of the image's jar into
+ * web/resources.
  *
- * The temp directory is created with mkdtempSync (mode 0700) for the same
- * symlink-safety reason as runner.js.
+ * The temp directory is created with mkdtempSync (mode 0700) for symlink safety.
  */
-async function exportWebDiff(eventName, eventPath, image = DEFAULT_IMAGE, token = '') {
+async function exportDiff(eventName, eventPath, image = DEFAULT_IMAGE, token = '') {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-web-'));
   const url = buildAnalysisUrl(eventName, eventPath);
 
@@ -81844,10 +81851,28 @@ async function exportWebDiff(eventName, eventPath, image = DEFAULT_IMAGE, token 
     throw new Error(`Expected exported web view at ${webDir} was not produced`);
   }
 
-  return webDir;
+  return { webDir, refactorings: readRefactorings(tmpDir) };
 }
 
-module.exports = { exportWebDiff, buildAnalysisUrl };
+/**
+ * Reads the `jsons/refactorings.json` that `diff --export` writes next to the
+ * web view, and returns its `refactorings` array. Throws if the file is absent,
+ * which signals the image predates the JSON/markup export and must be updated.
+ */
+function readRefactorings(tmpDir) {
+  const jsonPath = path.join(tmpDir, 'jsons', 'refactorings.json');
+  if (!fs.existsSync(jsonPath)) {
+    throw new Error(
+      `RefactoringMiner did not produce ${jsonPath}. The image must include the ` +
+        `markup JSON export (DiffDriver writes jsons/refactorings.json on --export).`,
+    );
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  return Array.isArray(parsed.refactorings) ? parsed.refactorings : [];
+}
+
+module.exports = { exportDiff, buildAnalysisUrl, readRefactorings };
 
 
 /***/ }),
@@ -81873,13 +81898,30 @@ function viewFooter(view) {
 }
 
 /**
- * Builds a markdown comment body from RefactoringMiner's JSON output.
- * @param {{ commits: Array<{ refactorings: Array<{ type: string, description: string }> }> }} data
+ * Renders a single refactoring as a bullet.
+ *
+ * RefactoringMiner already produces a `markup` field where code elements are
+ * markdown links to the exact GitHub diff lines and class names are inline code
+ * (toMarkupStringWithGitHubLinks). It starts with the bold refactoring name, so
+ * we render it verbatim. `description` is the plain-text fallback for output
+ * that predates the markup field (eg a non-GitHub remote, or an older image).
+ *
+ * @param {{ type: string, description?: string, markup?: string }} r
+ * @returns {string}
+ */
+function renderRefactoring(r) {
+  return `- ${r.markup || r.description || r.type}`;
+}
+
+/**
+ * Builds a markdown comment body from the refactorings RefactoringMiner detected.
+ * @param {Array<{ type: string, description?: string, markup?: string }>} refactorings
+ *   The `refactorings` array from the exported `jsons/refactorings.json`.
  * @param {{ url: string, kind: 'pages' | 'artifact' }} [view] Optional interactive-view link.
  * @returns {string}
  */
-function buildComment(data, view) {
-  const all = data.commits.flatMap(c => c.refactorings);
+function buildComment(refactorings, view) {
+  const all = Array.isArray(refactorings) ? refactorings : [];
   const footer = viewFooter(view);
 
   if (all.length === 0) {
@@ -81895,9 +81937,7 @@ function buildComment(data, view) {
     .map(([type, count]) => `${count} ${type}`)
     .join(', ');
 
-  const details = all
-    .map(r => `- **${r.type}** — ${r.description}`)
-    .join('\n');
+  const details = all.map(renderRefactoring).join('\n');
 
   return `${COMMENT_HEADER}\nFound ${all.length} refactorings: ${breakdown}\n\n${details}${footer}`;
 }
@@ -81954,8 +81994,8 @@ function authRemote(serverUrl, owner, repo, token) {
   return `https://x-access-token:${token}@${host}/${owner}/${repo}.git`;
 }
 
-function pagesUrl(owner, repo, prNumber, sha) {
-  return `https://${owner.toLowerCase()}.github.io/${repo}/${PAGES_ROOT}/pr-${prNumber}/${sha}/list/`;
+function pagesUrl(owner, repo, prNumber) {
+  return `https://${owner.toLowerCase()}.github.io/${repo}/${PAGES_ROOT}/pr-${prNumber}/list/`;
 }
 
 async function git(args, cwd) {
@@ -82004,13 +82044,13 @@ async function commitAndPush(dir, message) {
 
 /**
  * Publishes the exported web view to the gh-pages branch under
- * refactorings/pr-<n>/<sha>/ and enables Pages if needed. Returns the view URL.
+ * refactorings/pr-<n>/ and enables Pages if needed. Returns the view URL.
  */
-async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, prNumber, sha }) {
+async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, prNumber }) {
   const remote = authRemote(serverUrl, owner, repo, token);
   const dir = await checkoutPagesBranch(remote);
 
-  const dest = path.join(dir, PAGES_ROOT, `pr-${prNumber}`, sha);
+  const dest = path.join(dir, PAGES_ROOT, `pr-${prNumber}`);
   fs.mkdirSync(dest, { recursive: true });
   fs.cpSync(webDir, dest, { recursive: true });
 
@@ -82018,11 +82058,11 @@ async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, 
   // drops files/folders beginning with an underscore).
   fs.writeFileSync(path.join(dir, '.nojekyll'), '');
 
-  await commitAndPush(dir, `Publish refactoring diff for PR #${prNumber} (${sha})`);
+  await commitAndPush(dir, `Publish refactoring diff for PR #${prNumber}`);
   fs.rmSync(dir, { recursive: true, force: true });
 
   await ensurePagesEnabled(octokit, owner, repo);
-  return pagesUrl(owner, repo, prNumber, sha);
+  return pagesUrl(owner, repo, prNumber);
 }
 
 async function ensurePagesEnabled(octokit, owner, repo) {
@@ -82093,77 +82133,6 @@ module.exports = {
   pagesUrl,
   ARTIFACT_NAME,
 };
-
-
-/***/ }),
-
-/***/ 69907:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-const core = __nccwpck_require__(37484);
-const exec = __nccwpck_require__(95236);
-const fs = __nccwpck_require__(79896);
-const os = __nccwpck_require__(70857);
-const path = __nccwpck_require__(16928);
-
-const DEFAULT_IMAGE = 'tsantalis/refactoringminer:latest';
-const CONTAINER_WORKSPACE = '/workspace';
-const CONTAINER_OUTPUT = '/output';
-
-/**
- * Pulls the RefactoringMiner Docker image, runs it against the checkout,
- * and returns the parsed JSON output.
- *
- * Uses mkdtempSync to create a private, uniquely-named temp directory
- * (mode 0700) rather than a static path under /tmp, avoiding symlink
- * attacks in a world-writable directory.
- */
-async function runRefactoringMiner(workspace, eventName, eventPath, image = DEFAULT_IMAGE) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-'));
-
-  try {
-    core.info(`Pulling ${image}...`);
-    await exec.exec('docker', ['pull', image]);
-
-    const rmArgs = buildRmArgs(eventName, eventPath);
-    core.info(`Running RefactoringMiner (${eventName})...`);
-
-    await exec.exec('docker', [
-      'run', '--rm',
-      '-v', `${workspace}:${CONTAINER_WORKSPACE}`,
-      '-v', `${tmpDir}:${CONTAINER_OUTPUT}`,
-      '-e', 'GIT_CONFIG_COUNT=1',
-      '-e', 'GIT_CONFIG_KEY_0=safe.directory',
-      '-e', 'GIT_CONFIG_VALUE_0=*',
-      image,
-      ...rmArgs,
-    ]);
-
-    return JSON.parse(fs.readFileSync(path.join(tmpDir, 'refactorings.json'), 'utf8'));
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
-}
-
-/**
- * Returns the RefactoringMiner CLI args for the given event type.
- * Output is always written to CONTAINER_OUTPUT/refactorings.json.
- */
-function buildRmArgs(eventName, eventPath) {
-  const outFile = `${CONTAINER_OUTPUT}/refactorings.json`;
-
-  if (eventName === 'pull_request') {
-    const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
-    const baseSha = event.pull_request.base.sha;
-    const headSha = event.pull_request.head.sha;
-    return ['-bc', CONTAINER_WORKSPACE, baseSha, headSha, '-json', outFile];
-  }
-
-  const sha = process.env.GITHUB_SHA;
-  return ['-c', CONTAINER_WORKSPACE, sha, '-json', outFile];
-}
-
-module.exports = { runRefactoringMiner, buildRmArgs };
 
 
 /***/ }),
@@ -133420,8 +133389,7 @@ var __webpack_exports__ = {};
 const core = __nccwpck_require__(37484);
 const { getOctokit } = __nccwpck_require__(93228);
 const fs = __nccwpck_require__(79896);
-const { runRefactoringMiner } = __nccwpck_require__(69907);
-const { exportWebDiff } = __nccwpck_require__(53396);
+const { exportDiff } = __nccwpck_require__(53396);
 const { buildComment } = __nccwpck_require__(59315);
 const { postOrUpdateComment } = __nccwpck_require__(51147);
 const { decideTarget, publishToPages, uploadArtifactView, cleanupPages } = __nccwpck_require__(94965);
@@ -133434,7 +133402,6 @@ async function run() {
 
     const eventName = process.env.GITHUB_EVENT_NAME;
     const eventPath = process.env.GITHUB_EVENT_PATH;
-    const workspace = process.env.GITHUB_WORKSPACE;
     const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
     const runId = process.env.GITHUB_RUN_ID;
     const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
@@ -133448,14 +133415,17 @@ async function run() {
       return;
     }
 
-    const data = await runRefactoringMiner(workspace, eventName, eventPath, image);
+    // One RefactoringMiner call produces everything we need: the interactive web
+    // diff AND the refactorings JSON whose `markup` is already linked to the
+    // exact GitHub diff lines. No separate commit-analysis run.
+    const { webDir, refactorings } = await exportDiff(eventName, eventPath, image, token);
 
     let view;
     if (enableWebView && eventName === 'pull_request') {
-      view = await buildView({ octokit, token, serverUrl, owner, repo, runId, image, eventName, eventPath, event });
+      view = await publishView({ octokit, token, serverUrl, owner, repo, runId, webDir, event });
     }
 
-    const body = buildComment(data, view);
+    const body = buildComment(refactorings, view);
 
     if (eventName === 'pull_request') {
       await postOrUpdateComment(token, body, eventPath, octokit);
@@ -133468,20 +133438,18 @@ async function run() {
 }
 
 /**
- * Exports the interactive diff and publishes it (Pages or artifact), returning
- * a `{ url, kind }` view descriptor. Any failure here is non-fatal: it logs a
+ * Publishes the already-exported web view (Pages or artifact) and returns a
+ * `{ url, kind }` view descriptor. Any failure here is non-fatal: it logs a
  * warning and returns undefined so the summary comment is still posted.
  */
-async function buildView({ octokit, token, serverUrl, owner, repo, runId, image, eventName, eventPath, event }) {
+async function publishView({ octokit, token, serverUrl, owner, repo, runId, webDir, event }) {
   try {
-    const webDir = await exportWebDiff(eventName, eventPath, image, token);
     const prNumber = event.pull_request.number;
-    const sha = event.pull_request.head.sha;
     const isPrivate = event.repository.private;
 
     const target = await decideTarget(octokit, owner, repo, isPrivate);
     if (target === 'pages') {
-      const url = await publishToPages({ octokit, token, serverUrl, owner, repo, webDir, prNumber, sha });
+      const url = await publishToPages({ octokit, token, serverUrl, owner, repo, webDir, prNumber });
       return { url, kind: 'pages' };
     }
 
