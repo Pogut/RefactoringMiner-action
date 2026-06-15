@@ -77,8 +77,8 @@ describe('decideTarget', () => {
 // ---------------------------------------------------------------------------
 describe('pagesUrl', () => {
   test('builds a lowercase-owner project Pages URL under the PR subpath', () => {
-    expect(pagesUrl('MyOrg', 'MyRepo', 12, 'abc123'))
-      .toBe('https://myorg.github.io/MyRepo/refactorings/pr-12/abc123/list/');
+    expect(pagesUrl('MyOrg', 'MyRepo', 12))
+      .toBe('https://myorg.github.io/MyRepo/refactorings/pr-12/list/');
   });
 });
 
@@ -92,10 +92,10 @@ describe('publishToPages', () => {
     const octokit = octokitWithPages(jest.fn());
     const url = await publishToPages({
       octokit, token: 't', serverUrl: 'https://github.com',
-      owner: 'o', repo: 'r', webDir: '/tmp/web', prNumber: 5, sha: 'sha9',
+      owner: 'o', repo: 'r', webDir: '/tmp/web', prNumber: 5,
     });
 
-    expect(url).toBe('https://o.github.io/r/refactorings/pr-5/sha9/list/');
+    expect(url).toBe('https://o.github.io/r/refactorings/pr-5/list/');
     const pushed = exec.exec.mock.calls.some(
       ([cmd, args]) => cmd === 'git' && args[0] === 'push',
     );
@@ -107,7 +107,7 @@ describe('publishToPages', () => {
     const octokit = octokitWithPages(jest.fn());
     await publishToPages({
       octokit, token: 't', serverUrl: 'https://github.com',
-      owner: 'o', repo: 'r', webDir: '/tmp/web', prNumber: 5, sha: 'sha9',
+      owner: 'o', repo: 'r', webDir: '/tmp/web', prNumber: 5,
     });
     const wroteNoJekyll = fs.writeFileSync.mock.calls.some(
       ([file]) => String(file).endsWith('.nojekyll'),
