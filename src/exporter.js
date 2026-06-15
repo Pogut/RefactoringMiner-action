@@ -24,17 +24,24 @@ function buildAnalysisUrl(eventName, eventPath) {
 }
 
 /**
- * Exports RefactoringMiner's interactive AST-diff web view as a self-contained
- * static site and returns the path to the generated `web/` directory.
+ * Runs RefactoringMiner's `diff --url <url> --export` once and returns both
+ * products of that single call:
+ *
+ *   - webDir: the self-contained interactive AST-diff site (`web/`), ready to
+ *     publish to Pages or upload as an artifact.
+ *   - refactorings: the parsed `jsons/refactorings.json` array. Each entry has a
+ *     `markup` field whose code elements are already linked to the exact GitHub
+ *     diff lines by RefactoringMiner itself (toMarkupStringWithGitHubLinks), so
+ *     the action never has to build those links.
  *
  * Mirrors the proven recipe from EmpiricalSEConcordia/Refactoringminer-Astdiff-Exporter:
- * `refactoringminer diff --url <url> -e` writes the diff pages, and the Monaco
- * editor + JS/CSS resources are copied out of the image's jar into web/resources.
+ * `refactoringminer diff --url <url> -e` writes the diff pages and the JSON, and
+ * the Monaco editor + JS/CSS resources are copied out of the image's jar into
+ * web/resources.
  *
- * The temp directory is created with mkdtempSync (mode 0700) for the same
- * symlink-safety reason as runner.js.
+ * The temp directory is created with mkdtempSync (mode 0700) for symlink safety.
  */
-async function exportWebDiff(eventName, eventPath, image = DEFAULT_IMAGE, token = '') {
+async function exportDiff(eventName, eventPath, image = DEFAULT_IMAGE, token = '') {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-web-'));
   const url = buildAnalysisUrl(eventName, eventPath);
 
@@ -57,7 +64,25 @@ async function exportWebDiff(eventName, eventPath, image = DEFAULT_IMAGE, token 
     throw new Error(`Expected exported web view at ${webDir} was not produced`);
   }
 
-  return webDir;
+  return { webDir, refactorings: readRefactorings(tmpDir) };
 }
 
-module.exports = { exportWebDiff, buildAnalysisUrl };
+/**
+ * Reads the `jsons/refactorings.json` that `diff --export` writes next to the
+ * web view, and returns its `refactorings` array. Throws if the file is absent,
+ * which signals the image predates the JSON/markup export and must be updated.
+ */
+function readRefactorings(tmpDir) {
+  const jsonPath = path.join(tmpDir, 'jsons', 'refactorings.json');
+  if (!fs.existsSync(jsonPath)) {
+    throw new Error(
+      `RefactoringMiner did not produce ${jsonPath}. The image must include the ` +
+        `markup JSON export (DiffDriver writes jsons/refactorings.json on --export).`,
+    );
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  return Array.isArray(parsed.refactorings) ? parsed.refactorings : [];
+}
+
+module.exports = { exportDiff, buildAnalysisUrl, readRefactorings };
