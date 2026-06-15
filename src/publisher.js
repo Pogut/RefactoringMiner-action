@@ -42,8 +42,8 @@ function authRemote(serverUrl, owner, repo, token) {
   return `https://x-access-token:${token}@${host}/${owner}/${repo}.git`;
 }
 
-function pagesUrl(owner, repo, prNumber, sha) {
-  return `https://${owner.toLowerCase()}.github.io/${repo}/${PAGES_ROOT}/pr-${prNumber}/${sha}/list/`;
+function pagesUrl(owner, repo, prNumber) {
+  return `https://${owner.toLowerCase()}.github.io/${repo}/${PAGES_ROOT}/pr-${prNumber}/list/`;
 }
 
 async function git(args, cwd) {
@@ -94,11 +94,11 @@ async function commitAndPush(dir, message) {
  * Publishes the exported web view to the gh-pages branch under
  * refactorings/pr-<n>/<sha>/ and enables Pages if needed. Returns the view URL.
  */
-async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, prNumber, sha }) {
+async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, prNumber }) {
   const remote = authRemote(serverUrl, owner, repo, token);
   const dir = await checkoutPagesBranch(remote);
 
-  const dest = path.join(dir, PAGES_ROOT, `pr-${prNumber}`, sha);
+  const dest = path.join(dir, PAGES_ROOT, `pr-${prNumber}`);
   fs.mkdirSync(dest, { recursive: true });
   fs.cpSync(webDir, dest, { recursive: true });
 
@@ -106,11 +106,11 @@ async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, 
   // drops files/folders beginning with an underscore).
   fs.writeFileSync(path.join(dir, '.nojekyll'), '');
 
-  await commitAndPush(dir, `Publish refactoring diff for PR #${prNumber} (${sha})`);
+  await commitAndPush(dir, `Publish refactoring diff for PR #${prNumber}`);
   fs.rmSync(dir, { recursive: true, force: true });
 
   await ensurePagesEnabled(octokit, owner, repo);
-  return pagesUrl(owner, repo, prNumber, sha);
+  return pagesUrl(owner, repo, prNumber);
 }
 
 async function ensurePagesEnabled(octokit, owner, repo) {
