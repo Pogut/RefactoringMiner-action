@@ -92,7 +92,7 @@ async function commitAndPush(dir, message) {
 
 /**
  * Publishes the exported web view to the gh-pages branch under
- * refactorings/pr-<n>/<sha>/ and enables Pages if needed. Returns the view URL.
+ * refactorings/pr-<n>/ and enables Pages if needed. Returns the view URL.
  */
 async function publishToPages({ octokit, token, serverUrl, owner, repo, webDir, prNumber }) {
   const remote = authRemote(serverUrl, owner, repo, token);
