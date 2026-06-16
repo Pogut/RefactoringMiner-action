@@ -35,6 +35,46 @@ describe('buildComment', () => {
     expect(body).toContain('from class `CustomerProfile`');
   });
 
+  test('escapes underscores in linked dunder names so GitHub keeps them literal', () => {
+    const base = 'https://github.com/o/r/pull/9/changes?diff=split#diff-hash';
+    const body = buildComment([
+      {
+        type: 'Rename Method',
+        markup: `**Rename Method** [private __init__(self) : None](${base}L5) renamed to [private __setup__(self) : None](${base}R6) in class \`CustomerProfile\``,
+      },
+    ]);
+    // The link text is escaped (no bold "init"), but the URL and code span keep
+    // their underscores untouched.
+    expect(body).toContain(`[private \\_\\_init\\_\\_(self) : None](${base}L5)`);
+    expect(body).toContain(`[private \\_\\_setup\\_\\_(self) : None](${base}R6)`);
+    expect(body).not.toContain('[private __init__');
+  });
+
+  test('escapes asterisks in *args/**kwargs parameters', () => {
+    const base = 'https://github.com/o/r/pull/9/changes?diff=split#diff-hash';
+    const body = buildComment([
+      { type: 'Add Parameter', markup: `**Add Parameter** [**kwargs](${base}R4) in method \`build\`` },
+    ]);
+    expect(body).toContain(`[\\*\\*kwargs](${base}R4)`);
+  });
+
+  test('leaves underscores in the link URL untouched', () => {
+    // A repo named with an underscore must keep it, or the link breaks.
+    const base = 'https://github.com/o/my_repo/pull/9/changes?diff=split#diff-hash';
+    const body = buildComment([
+      { type: 'Rename Method', markup: `**Rename Method** [foo()](${base}L5) in class \`A\`` },
+    ]);
+    expect(body).toContain(`[foo()](${base}L5)`);
+    expect(body).toContain('my_repo');
+  });
+
+  test('escapes emphasis chars in the plain description fallback', () => {
+    const body = buildComment([
+      { type: 'Rename Method', description: 'Rename Method __init__ to __new__ in class C' },
+    ]);
+    expect(body).toContain('- Rename Method \\_\\_init\\_\\_ to \\_\\_new\\_\\_ in class C');
+  });
+
   test('falls back to the plain description when markup is absent', () => {
     const body = buildComment([
       { type: 'Rename Variable', description: 'Rename Variable x to y in method m' },
