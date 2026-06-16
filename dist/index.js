@@ -81900,8 +81900,8 @@ function viewFooter(view) {
 /**
  * Backslash-escapes the Markdown emphasis characters in a run of rendered text.
  *
- * GitHub treats `_` and `*` as emphasis characters, so Python identifiers carry
- * them straight into the rendered output therefore `__init__` becomes a bold "init",
+ * GitHub treats `_` and `*` as emphasis delimiters, so Python identifiers carry
+ * them straight into the rendered output: `__init__` becomes a bold "init",
  * `*args`/`**kwargs` turn italic/bold. Escaping them keeps the literal name.
  * Other punctuation in code elements (parens, colons, generics) is left alone.
  */
@@ -81919,27 +81919,48 @@ function escapeEmphasis(text) {
  * repo named `my_repo`, so escaping it would break the link), so we leave those
  * verbatim and escape only the link text and the plain glue between constructs.
  * The literal `**` bold markers are preserved.
+ *
+ * Implemented as a single left-to-right scan over the string using `indexOf`
+ * rather than a backtracking regex: it is linear in the input length (no
+ * super-linear regex backtracking) and copes with `]`/`(`/`)` inside link text,
+ * eg a Java `[String[] args](url)` or a signature `[foo()](url)`, by splitting
+ * the link on the `](` separator rather than on the first `]`.
  */
 function escapeMarkupEmphasis(markup) {
-  // In priority order: a code span, a [text](url) link, or a ** bold marker.
-  // Everything between matches is plain glue text.
-  const TOKEN = /(`[^`]*`)|(\[.*?\]\(.*?\))|(\*\*)/g;
   let out = '';
-  let last = 0;
-  let m;
-  while ((m = TOKEN.exec(markup)) !== null) {
-    out += escapeEmphasis(markup.slice(last, m.index));
-    if (m[1] !== undefined) {
-      out += m[1]; // code span — verbatim
-    } else if (m[2] !== undefined) {
-      const link = m[2].match(/^\[(.*?)\]\((.*?)\)$/);
-      out += `[${escapeEmphasis(link[1])}](${link[2]})`; // escape text, keep url
-    } else {
-      out += '**'; // bold marker — verbatim
+  let i = 0;
+  while (i < markup.length) {
+    const c = markup[i];
+    if (c === '`') {
+      // `inline code` — copied verbatim.
+      const end = markup.indexOf('`', i + 1);
+      if (end !== -1) {
+        out += markup.slice(i, end + 1);
+        i = end + 1;
+        continue;
+      }
+    } else if (c === '[') {
+      // [text](url) — escape the text, keep the url verbatim.
+      const sep = markup.indexOf('](', i + 1);
+      if (sep !== -1) {
+        const end = markup.indexOf(')', sep + 2);
+        if (end !== -1) {
+          out += `[${escapeEmphasis(markup.slice(i + 1, sep))}](${markup.slice(sep + 2, end)})`;
+          i = end + 1;
+          continue;
+        }
+      }
+    } else if (c === '*' && markup[i + 1] === '*') {
+      // ** bold marker — copied verbatim.
+      out += '**';
+      i += 2;
+      continue;
     }
-    last = TOKEN.lastIndex;
+    // Anything else is plain glue text: escape its emphasis chars.
+    out += escapeEmphasis(c);
+    i += 1;
   }
-  return out + escapeEmphasis(markup.slice(last));
+  return out;
 }
 
 /**

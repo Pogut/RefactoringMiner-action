@@ -58,6 +58,17 @@ describe('buildComment', () => {
     expect(body).toContain(`[\\*\\*kwargs](${base}R4)`);
   });
 
+  test('handles ] and () inside link text', () => {
+    // The scanner splits on `](`, so brackets/parens in the code element (eg a
+    // Java array type or a signature) do not truncate the link.
+    const base = 'https://github.com/o/r/pull/9/changes?diff=split#diff-hash';
+    const body = buildComment([
+      { type: 'Add Parameter', markup: `**Add Parameter** [String[] args](${base}R4) in method \`run()\`` },
+    ]);
+    expect(body).toContain(`[String[] args](${base}R4)`);
+    expect(body).toContain('in method `run()`');
+  });
+
   test('leaves underscores in the link URL untouched', () => {
     // A repo named with an underscore must keep it, or the link breaks.
     const base = 'https://github.com/o/my_repo/pull/9/changes?diff=split#diff-hash';
