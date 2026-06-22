@@ -16,12 +16,7 @@ function viewFooter(view) {
 }
 
 /**
- * Backslash-escapes the Markdown emphasis characters in a run of rendered text.
- *
- * GitHub treats `_` and `*` as emphasis delimiters, so Python identifiers carry
- * them straight into the rendered output: `__init__` becomes a bold "init",
- * `*args`/`**kwargs` turn italic/bold. Escaping them keeps the literal name.
- * Other punctuation in code elements (parens, colons, generics) is left alone.
+ * fix for bold problem with Python's __init__
  */
 function escapeEmphasis(text) {
   return text.replace(/[_*]/g, '\\$&');
