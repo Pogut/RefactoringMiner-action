@@ -3,8 +3,8 @@ description: 'Detect refactorings in pull requests, post a summary comment, and 
 author: 'Parsa Hejazi'
 
 branding:
-  icon: 'search'
-  color: 'green'
+  icon: 'shuffle'
+  color: 'black'
 
 inputs:
   github-token:
