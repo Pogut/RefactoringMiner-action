@@ -1,5 +1,5 @@
 name: 'RefactoringMiner Report'
-description: 'Detects refactorings in commits/PRs and posts a markdown report as a PR comment'
+description: 'Detect refactorings in pull requests, post a summary comment, and publish an interactive AST-diff view'
 author: 'Parsa Hejazi'
 
 branding:
@@ -8,7 +8,7 @@ branding:
 
 inputs:
   github-token:
-    description: 'Token used to post the PR comment'
+    description: 'Token used to post the PR comment and publish the interactive view'
     required: true
     default: ${{ github.token }}
   image:
@@ -16,11 +16,10 @@ inputs:
     required: false
     default: 'tsantalis/refactoringminer:latest'
   enable-web-view:
-    description: 'Export the interactive AST-diff view and link it in the PR comment (GitHub Pages on public repos, workflow artifact otherwise)'
+    description: 'Export the interactive AST-diff view and link it in the PR comment (GitHub Pages when the repo is public and Pages is served from gh-pages, workflow artifact otherwise)'
     required: false
     default: 'true'
 
 runs:
   using: 'node24'
   main: 'dist/index.js'
-  
