@@ -1,4 +1,4 @@
-name: 'RefactoringMiner Report'
+name: 'RefactoringMiner Action'
 description: 'Detect refactorings in pull requests, post a summary comment, and publish an interactive AST-diff view'
 author: 'Parsa Hejazi'
 
