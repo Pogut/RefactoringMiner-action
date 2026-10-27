@@ -105,9 +105,9 @@ describe('buildComment', () => {
   });
 
   test('appends an artifact view link when view kind is artifact', () => {
-    const body = buildComment(threeRefactorings(), { url: 'https://github.com/o/r/actions/runs/1', kind: 'artifact' });
+    const body = buildComment(threeRefactorings(), { url: 'https://github.com/o/r/actions/runs/1/artifacts/2', kind: 'artifact' });
     expect(body).toContain('workflow artifact');
-    expect(body).toContain('https://github.com/o/r/actions/runs/1');
+    expect(body).toContain('https://github.com/o/r/actions/runs/1/artifacts/2');
   });
 
   test('appends the view link even when no refactorings are detected', () => {

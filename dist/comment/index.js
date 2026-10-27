@@ -29985,7 +29985,7 @@ function viewFooter(view) {
   if (view.kind === 'pages') {
     return `\n\n🔍 **[View the interactive diff](${view.url})**`;
   }
-  return `\n\n📦 Interactive diff exported as a workflow artifact — [open the run](${view.url}), download \`refactoring-diff\`, and open \`web/list/index.html\`.`;
+  return `\n\n📦 Interactive diff exported as a workflow artifact — [download \`refactoring-diff\`](${view.url}), unzip it, and open \`list/index.html\`.`;
 }
 
 /**

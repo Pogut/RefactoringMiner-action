@@ -100,7 +100,7 @@ That is why the workflow needs `actions: read` (to fetch the previous store) and
 
 ### When it falls back to an artifact
 
-If Pages can't be used, the view is uploaded as a workflow artifact named `refactoring-diff` and the comment links to the run instead. Download it and open `web/list/index.html`. This happens when:
+If Pages can't be used, the view is uploaded as a workflow artifact named `refactoring-diff` and the comment links straight to its download. Unzip it and open `list/index.html`. This happens when:
 
 - **the repository is private** — Pages sites would be public, so the action never publishes one for you; or
 - **Pages is served from a branch** — the legacy "Deploy from a branch" source, including a `gh-pages` branch left over from an older version of this action. Switch the Source to "GitHub Actions" as described above.

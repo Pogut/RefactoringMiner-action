@@ -29,7 +29,7 @@ runs:
   steps:
     # Runs RefactoringMiner once, writes the refactorings JSON for the comment
     # step, and decides how the view gets published: `pages` (deploy below),
-    # `artifact` (already uploaded here), `no-view`, `remove` (the PR closed),
+    # `artifact` (upload below), `no-view`, `remove` (the PR closed),
     # `log` (not a PR) or `skip`.
     - name: Export diff
       id: export
@@ -39,6 +39,20 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         RM_IMAGE: ${{ inputs.image }}
         ENABLE_WEB_VIEW: ${{ inputs.enable-web-view }}
+
+    # The artifact fallback (private repos, or Pages served from a branch).
+    # It has to be a `uses:` step: the runner only hands ACTIONS_RUNTIME_TOKEN
+    # to JavaScript/Docker actions, so uploading from the `run:` step above
+    # fails with "Unable to get the ACTIONS_RUNTIME_TOKEN env variable".
+    - name: Upload diff view artifact
+      id: view-artifact
+      if: steps.export.outputs.mode == 'artifact'
+      continue-on-error: true
+      uses: actions/upload-artifact@v4
+      with:
+        name: refactoring-diff
+        path: ${{ steps.export.outputs.web-dir }}
+        if-no-files-found: error
 
     # Multi-PR bundling. GitHub's Actions-based Pages deploy replaces the WHOLE
     # site on every run, so to keep every open PR's view alive the site is
@@ -105,5 +119,6 @@ runs:
         MODE: ${{ steps.export.outputs.mode }}
         REFACTORINGS_PATH: ${{ steps.export.outputs.refactorings-path }}
         # Each PR's view lives under refactorings/pr-<n>/list/ in the bundled site.
-        VIEW_URL: ${{ steps.export.outputs.mode == 'pages' && format('{0}refactorings/pr-{1}/list/', steps.deployment.outputs.page_url, steps.bundle.outputs.pr-number) || steps.export.outputs.view-url }}
+        # The artifact path links straight to the download; it is empty when the upload failed.
+        VIEW_URL: ${{ steps.export.outputs.mode == 'pages' && format('{0}refactorings/pr-{1}/list/', steps.deployment.outputs.page_url, steps.bundle.outputs.pr-number) || steps.view-artifact.outputs.artifact-url }}
         DEPLOY_OUTCOME: ${{ steps.deployment.outcome }}
