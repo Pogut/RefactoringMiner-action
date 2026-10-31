@@ -30006,7 +30006,14 @@ function viewFooter(view) {
   }
   const viewerUrl = safeViewerUrl(view.viewerUrl);
   if (viewerUrl) {
-    return `\n\n🔗 **Interactive diff:** [download \`refactoring-diff\`](${view.url}), then drop the zip as it is onto the [diff viewer](${viewerUrl}). No need to unzip it.`;
+    return [
+      '',
+      '',
+      '#### 🔗 View the interactive diff',
+      '',
+      `1. **[Download the diff (zip)](${view.url})**`,
+      `2. **[Open the diff viewer](${viewerUrl})** and drop the zip onto it. No need to unzip it.`,
+    ].join('\n');
   }
   return `\n\n🔗 Interactive diff exported as a workflow artifact: [download \`refactoring-diff\`](${view.url}), unzip it, and open \`list/index.html\`.`;
 }

@@ -139,16 +139,16 @@ describe('buildComment', () => {
     const zip = 'https://github.com/o/r/actions/runs/1/artifacts/2';
     const viewer = 'https://claude.ai/artifact/abc';
     const body = buildComment(threeRefactorings(), { url: zip, kind: 'artifact', viewerUrl: viewer });
-    expect(body).toContain(`[download \`refactoring-diff\`](${zip})`);
-    expect(body).toContain(`[diff viewer](${viewer})`);
-    expect(body).toContain('No need to unzip it');
+    expect(body).toContain('#### 🔗 View the interactive diff');
+    expect(body).toContain(`1. **[Download the diff (zip)](${zip})**`);
+    expect(body).toContain(`2. **[Open the diff viewer](${viewer})** and drop the zip onto it.`);
     expect(body).not.toContain('list/index.html');
   });
 
   test('falls back to the unzip instructions when the viewer URL is unsafe', () => {
     const zip = 'https://github.com/o/r/actions/runs/1/artifacts/2';
     const body = buildComment(threeRefactorings(), { url: zip, kind: 'artifact', viewerUrl: 'javascript:alert(1)' });
-    expect(body).not.toContain('diff viewer');
+    expect(body).not.toContain('Open the diff viewer');
     expect(body).toContain('list/index.html');
   });
 
