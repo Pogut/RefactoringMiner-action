@@ -36,7 +36,7 @@ function viewFooter(view) {
     return [
       '',
       '',
-      '#### 🔗 View the interactive diff',
+      '### 🔗 Steps to view the interactive diff',
       '',
       `1. **[Download the diff (zip)](${view.url})**`,
       `2. **[Open the diff viewer](${viewerUrl})** and drop the zip onto it. No need to unzip it.`,
