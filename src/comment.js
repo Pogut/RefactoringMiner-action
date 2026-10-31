@@ -1,6 +1,6 @@
 const core = require('@actions/core');
 const fs = require('fs');
-const { buildComment } = require('./formatter');
+const { buildComment, safeViewerUrl } = require('./formatter');
 const { postOrUpdateComment } = require('./commenter');
 
 /**
@@ -24,7 +24,11 @@ async function run() {
     if (mode === 'pages' && process.env.DEPLOY_OUTCOME === 'success' && process.env.VIEW_URL) {
       view = { url: process.env.VIEW_URL, kind: 'pages' };
     } else if (mode === 'artifact' && process.env.VIEW_URL) {
-      view = { url: process.env.VIEW_URL, kind: 'artifact' };
+      const viewerUrl = process.env.VIEWER_URL || '';
+      if (viewerUrl && !safeViewerUrl(viewerUrl)) {
+        core.warning(`Ignoring viewer-url '${viewerUrl}': it must be a plain https URL. The comment links the zip only.`);
+      }
+      view = { url: process.env.VIEW_URL, kind: 'artifact', viewerUrl };
     } else if (mode === 'pages') {
       core.warning('GitHub Pages deployment did not succeed; posting the comment without a view link.');
     }

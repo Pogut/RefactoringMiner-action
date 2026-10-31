@@ -19,6 +19,10 @@ inputs:
     description: 'Export and publish the interactive AST-diff view (GitHub Pages, deployed via GitHub Actions, on public repos; workflow artifact otherwise)'
     required: false
     default: 'true'
+  viewer-url:
+    description: 'Page that renders the `refactoring-diff` zip in the browser, linked from the comment on private repos. Set to an empty string to link the zip only.'
+    required: false
+    default: 'https://claude.ai/artifact/CvMSw4TNnKuRsSiS5H6pTw'
   store-retention-days:
     description: 'How long the bundled multi-PR site is kept between runs, in days. A repository idle for longer than this starts a fresh site.'
     required: false
@@ -122,3 +126,4 @@ runs:
         # The artifact path links straight to the download; it is empty when the upload failed.
         VIEW_URL: ${{ steps.export.outputs.mode == 'pages' && format('{0}refactorings/pr-{1}/list/', steps.deployment.outputs.page_url, steps.bundle.outputs.pr-number) || steps.view-artifact.outputs.artifact-url }}
         DEPLOY_OUTCOME: ${{ steps.deployment.outcome }}
+        VIEWER_URL: ${{ inputs.viewer-url }}

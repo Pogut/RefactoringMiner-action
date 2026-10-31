@@ -29974,8 +29974,27 @@ module.exports = { postOrUpdateComment, COMMENT_HEADER };
 const COMMENT_HEADER = '### RefactoringMiner Report';
 
 /**
+ * Returns the zip viewer's URL when it is a plain https URL, or '' otherwise.
+ * The URL comes from the workflow's `viewer-url` input and lands in a Markdown
+ * link, so anything that could break out of `(...)` is refused rather than escaped.
+ * @param {string | undefined} url
+ * @returns {string}
+ */
+function safeViewerUrl(url) {
+  const trimmed = (url || '').trim();
+  if (!/^https:\/\/[^\s()<>]+$/.test(trimmed)) {
+    return '';
+  }
+  return trimmed;
+}
+
+/**
  * Renders the optional "view the interactive diff" footer.
- * @param {{ url: string, kind: 'pages' | 'artifact' } | undefined} view
+ *
+ * On private repos the view is a workflow artifact. GitHub only serves its
+ * download to people who can read the repository, so the zip itself is the
+ * access check; the viewer page then renders it in the browser, unzipped there.
+ * @param {{ url: string, kind: 'pages' | 'artifact', viewerUrl?: string } | undefined} view
  * @returns {string}
  */
 function viewFooter(view) {
@@ -29985,7 +30004,11 @@ function viewFooter(view) {
   if (view.kind === 'pages') {
     return `\n\n🔍 **[View the interactive diff](${view.url})**`;
   }
-  return `\n\n📦 Interactive diff exported as a workflow artifact — [download \`refactoring-diff\`](${view.url}), unzip it, and open \`list/index.html\`.`;
+  const viewerUrl = safeViewerUrl(view.viewerUrl);
+  if (viewerUrl) {
+    return `\n\n📦 **Interactive diff:** [download \`refactoring-diff\`](${view.url}), then drop the zip as it is onto the [diff viewer](${viewerUrl}). No need to unzip it.`;
+  }
+  return `\n\n📦 Interactive diff exported as a workflow artifact: [download \`refactoring-diff\`](${view.url}), unzip it, and open \`list/index.html\`.`;
 }
 
 /**
@@ -30108,7 +30131,7 @@ function buildComment(refactorings, view) {
   return `${COMMENT_HEADER}\nFound ${all.length} refactorings: ${breakdown}\n\n${details}${footer}`;
 }
 
-module.exports = { buildComment, COMMENT_HEADER };
+module.exports = { buildComment, safeViewerUrl, COMMENT_HEADER };
 
 
 /***/ }),
@@ -32027,7 +32050,7 @@ module.exports = parseParams
 var __webpack_exports__ = {};
 const core = __nccwpck_require__(7484);
 const fs = __nccwpck_require__(9896);
-const { buildComment } = __nccwpck_require__(9315);
+const { buildComment, safeViewerUrl } = __nccwpck_require__(9315);
 const { postOrUpdateComment } = __nccwpck_require__(1147);
 
 /**
@@ -32051,7 +32074,11 @@ async function run() {
     if (mode === 'pages' && process.env.DEPLOY_OUTCOME === 'success' && process.env.VIEW_URL) {
       view = { url: process.env.VIEW_URL, kind: 'pages' };
     } else if (mode === 'artifact' && process.env.VIEW_URL) {
-      view = { url: process.env.VIEW_URL, kind: 'artifact' };
+      const viewerUrl = process.env.VIEWER_URL || '';
+      if (viewerUrl && !safeViewerUrl(viewerUrl)) {
+        core.warning(`Ignoring viewer-url '${viewerUrl}': it must be a plain https URL. The comment links the zip only.`);
+      }
+      view = { url: process.env.VIEW_URL, kind: 'artifact', viewerUrl };
     } else if (mode === 'pages') {
       core.warning('GitHub Pages deployment did not succeed; posting the comment without a view link.');
     }
