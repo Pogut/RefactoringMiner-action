@@ -1,8 +1,27 @@
 const COMMENT_HEADER = '### RefactoringMiner Report';
 
 /**
+ * Returns the zip viewer's URL when it is a plain https URL, or '' otherwise.
+ * The URL comes from the workflow's `viewer-url` input and lands in a Markdown
+ * link, so anything that could break out of `(...)` is refused rather than escaped.
+ * @param {string | undefined} url
+ * @returns {string}
+ */
+function safeViewerUrl(url) {
+  const trimmed = (url || '').trim();
+  if (!/^https:\/\/[^\s()<>]+$/.test(trimmed)) {
+    return '';
+  }
+  return trimmed;
+}
+
+/**
  * Renders the optional "view the interactive diff" footer.
- * @param {{ url: string, kind: 'pages' | 'artifact' } | undefined} view
+ *
+ * On private repos the view is a workflow artifact. GitHub only serves its
+ * download to people who can read the repository, so the zip itself is the
+ * access check; the viewer page then renders it in the browser, unzipped there.
+ * @param {{ url: string, kind: 'pages' | 'artifact', viewerUrl?: string } | undefined} view
  * @returns {string}
  */
 function viewFooter(view) {
@@ -12,7 +31,18 @@ function viewFooter(view) {
   if (view.kind === 'pages') {
     return `\n\n🔍 **[View the interactive diff](${view.url})**`;
   }
-  return `\n\n📦 Interactive diff exported as a workflow artifact — [open the run](${view.url}), download \`refactoring-diff\`, and open \`web/list/index.html\`.`;
+  const viewerUrl = safeViewerUrl(view.viewerUrl);
+  if (viewerUrl) {
+    return [
+      '',
+      '',
+      '### 🔗 Steps to view the interactive diff',
+      '',
+      `1. **[Download the diff (zip)](${view.url})**`,
+      `2. **[Open the diff viewer](${viewerUrl})** and drop the zip onto it. No need to unzip it.`,
+    ].join('\n');
+  }
+  return `\n\n🔗 Interactive diff exported as a workflow artifact: [download \`refactoring-diff\`](${view.url}), unzip it, and open \`list/index.html\`.`;
 }
 
 /**
@@ -121,18 +151,30 @@ function buildComment(refactorings, view) {
     return `${COMMENT_HEADER}\nNo refactorings detected in this change.${footer}`;
   }
 
-  const counts = all.reduce((acc, r) => {
-    acc[r.type] = (acc[r.type] || 0) + 1;
-    return acc;
-  }, {});
+  // One collapsible section per refactoring type, in the order RefactoringMiner
+  // reported them, so a long report stays one line per type until opened.
+  const groups = new Map();
+  for (const r of all) {
+    if (!groups.has(r.type)) groups.set(r.type, []);
+    groups.get(r.type).push(r);
+  }
 
-  const breakdown = Object.entries(counts)
-    .map(([type, count]) => `${count} ${type}`)
-    .join(', ');
+  const sections = [...groups].map(([type, items]) => typeSection(type, items)).join('\n\n');
+  const noun = all.length === 1 ? 'refactoring' : 'refactorings';
 
-  const details = all.map(renderRefactoring).join('\n');
-
-  return `${COMMENT_HEADER}\nFound ${all.length} refactorings: ${breakdown}\n\n${details}${footer}`;
+  return `${COMMENT_HEADER}\nFound ${all.length} ${noun} of ${groups.size} ${groups.size === 1 ? 'type' : 'types'}.\n\n${sections}${footer}`;
 }
 
-module.exports = { buildComment, COMMENT_HEADER };
+/**
+ * Renders one `<details>` section listing every refactoring of a type. GitHub
+ * only renders Markdown inside `<details>` when blank lines surround it.
+ * @param {string} type
+ * @param {Array<{ type: string, description?: string, markup?: string }>} items
+ * @returns {string}
+ */
+function typeSection(type, items) {
+  const label = String(type).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<details>\n<summary><b>${label}</b> (${items.length})</summary>\n\n${items.map(renderRefactoring).join('\n')}\n\n</details>`;
+}
+
+module.exports = { buildComment, safeViewerUrl, COMMENT_HEADER };

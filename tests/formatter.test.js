@@ -1,4 +1,4 @@
-const { buildComment, COMMENT_HEADER } = require('../src/formatter');
+const { buildComment, safeViewerUrl, COMMENT_HEADER } = require('../src/formatter');
 
 describe('buildComment', () => {
   test('returns a no-refactorings message for an empty array', () => {
@@ -17,10 +17,35 @@ describe('buildComment', () => {
     expect(body).toContain('Found 3 refactorings');
   });
 
-  test('groups by type in the breakdown line', () => {
+  test('groups refactorings into one collapsible section per type, in report order', () => {
     const body = buildComment(threeRefactorings());
-    expect(body).toContain('2 Rename Method');
-    expect(body).toContain('1 Change Attribute Access Modifier');
+    expect(body).toContain('Found 3 refactorings of 2 types.');
+    const renames = body.indexOf('<summary><b>Rename Method</b> (2)</summary>');
+    const modifiers = body.indexOf('<summary><b>Change Attribute Access Modifier</b> (1)</summary>');
+    expect(renames).toBeGreaterThan(-1);
+    expect(modifiers).toBeGreaterThan(renames);
+    expect(body.match(/<details>/g)).toHaveLength(2);
+    expect(body.match(/<\/details>/g)).toHaveLength(2);
+    // Both Rename Method entries sit inside the first section.
+    const firstSection = body.slice(renames, body.indexOf('</details>'));
+    expect(firstSection).toContain('private foo() : void');
+    expect(firstSection).toContain('private one() : int');
+  });
+
+  test('leaves blank lines inside each section so GitHub renders its Markdown', () => {
+    const body = buildComment(threeRefactorings());
+    expect(body).toContain('</summary>\n\n- **Rename Method**');
+    expect(body).toMatch(/in class `B`\n\n<\/details>/);
+  });
+
+  test('uses the singular for a single refactoring', () => {
+    const body = buildComment([threeRefactorings()[2]]);
+    expect(body).toContain('Found 1 refactoring of 1 type.');
+  });
+
+  test('escapes HTML in the type shown in a section summary', () => {
+    const body = buildComment([{ type: 'A <b> & C', description: 'x' }]);
+    expect(body).toContain('<summary><b>A &lt;b&gt; &amp; C</b> (1)</summary>');
   });
 
   test('renders each refactoring from its linked markup verbatim', () => {
@@ -105,9 +130,26 @@ describe('buildComment', () => {
   });
 
   test('appends an artifact view link when view kind is artifact', () => {
-    const body = buildComment(threeRefactorings(), { url: 'https://github.com/o/r/actions/runs/1', kind: 'artifact' });
+    const body = buildComment(threeRefactorings(), { url: 'https://github.com/o/r/actions/runs/1/artifacts/2', kind: 'artifact' });
     expect(body).toContain('workflow artifact');
-    expect(body).toContain('https://github.com/o/r/actions/runs/1');
+    expect(body).toContain('https://github.com/o/r/actions/runs/1/artifacts/2');
+  });
+
+  test('links the zip and the viewer when the artifact has a viewer URL', () => {
+    const zip = 'https://github.com/o/r/actions/runs/1/artifacts/2';
+    const viewer = 'https://claude.ai/artifact/abc';
+    const body = buildComment(threeRefactorings(), { url: zip, kind: 'artifact', viewerUrl: viewer });
+    expect(body).toContain('### 🔗 Steps to view the interactive diff');
+    expect(body).toContain(`1. **[Download the diff (zip)](${zip})**`);
+    expect(body).toContain(`2. **[Open the diff viewer](${viewer})** and drop the zip onto it.`);
+    expect(body).not.toContain('list/index.html');
+  });
+
+  test('falls back to the unzip instructions when the viewer URL is unsafe', () => {
+    const zip = 'https://github.com/o/r/actions/runs/1/artifacts/2';
+    const body = buildComment(threeRefactorings(), { url: zip, kind: 'artifact', viewerUrl: 'javascript:alert(1)' });
+    expect(body).not.toContain('Open the diff viewer');
+    expect(body).toContain('list/index.html');
   });
 
   test('appends the view link even when no refactorings are detected', () => {
@@ -120,6 +162,23 @@ describe('buildComment', () => {
     const body = buildComment(threeRefactorings());
     expect(body).not.toContain('View the interactive diff');
     expect(body).not.toContain('workflow artifact');
+  });
+});
+
+describe('safeViewerUrl', () => {
+  test('keeps a plain https URL, trimmed', () => {
+    expect(safeViewerUrl(' https://claude.ai/artifact/abc ')).toBe('https://claude.ai/artifact/abc');
+  });
+
+  test.each([
+    ['empty', ''],
+    ['missing', undefined],
+    ['http', 'http://example.org/viewer'],
+    ['javascript', 'javascript:alert(1)'],
+    ['markdown breakout', 'https://example.org/a) [x](https://evil.example'],
+    ['whitespace inside', 'https://example.org/a b'],
+  ])('refuses %s', (_name, url) => {
+    expect(safeViewerUrl(url)).toBe('');
   });
 });
 

@@ -1,16 +1,7 @@
 jest.mock('@actions/core');
-jest.mock('@actions/artifact', () => ({
-  DefaultArtifactClient: jest.fn().mockImplementation(() => ({
-    uploadArtifact: jest.fn().mockResolvedValue({ id: 1 }),
-  })),
-}));
-jest.mock('fs', () => ({
-  ...jest.requireActual('fs'),
-  readdirSync: jest.fn(() => [{ name: 'index.html', isDirectory: () => false }]),
-}));
 
 const core = require('@actions/core');
-const { decideTarget, ensurePagesEnabled, uploadArtifactView } = require('../src/publisher');
+const { decideTarget, ensurePagesEnabled } = require('../src/publisher');
 
 function octokitWithPages(impl) {
   return { rest: { repos: { getPages: impl, createPagesSite: jest.fn().mockResolvedValue({}) } } };
@@ -79,15 +70,3 @@ describe('ensurePagesEnabled', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// uploadArtifactView
-// ---------------------------------------------------------------------------
-describe('uploadArtifactView', () => {
-  test('returns the workflow run URL', async () => {
-    const url = await uploadArtifactView({
-      webDir: '/tmp/web', serverUrl: 'https://github.com',
-      owner: 'o', repo: 'r', runId: '999',
-    });
-    expect(url).toBe('https://github.com/o/r/actions/runs/999');
-  });
-});

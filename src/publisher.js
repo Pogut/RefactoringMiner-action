@@ -1,9 +1,4 @@
 const core = require('@actions/core');
-const { DefaultArtifactClient } = require('@actions/artifact');
-const fs = require('fs');
-const path = require('path');
-
-const ARTIFACT_NAME = 'refactoring-diff';
 
 /**
  * Decides where to publish the exported web view.
@@ -59,23 +54,7 @@ async function ensurePagesEnabled(octokit, owner, repo) {
   }
 }
 
-function listFiles(dir) {
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(dir, entry.name);
-    return entry.isDirectory() ? listFiles(full) : [full];
-  });
-}
-
-/** Uploads the web view as a workflow artifact; returns the run page URL. */
-async function uploadArtifactView({ webDir, serverUrl, owner, repo, runId }) {
-  const client = new DefaultArtifactClient();
-  await client.uploadArtifact(ARTIFACT_NAME, listFiles(webDir), webDir);
-  return `${serverUrl}/${owner}/${repo}/actions/runs/${runId}`;
-}
-
 module.exports = {
   decideTarget,
   ensurePagesEnabled,
-  uploadArtifactView,
-  ARTIFACT_NAME,
 };

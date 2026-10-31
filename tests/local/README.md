@@ -50,8 +50,8 @@ SHA=<commit> BASE_SHA=<base-commit> \
 
 - **PR path with `ENABLE_WEB_VIEW=true`:** `export.js` will call the real
   GitHub Pages API to decide a target; with the dummy token this call fails
-  and it falls back to `mode=artifact` (a real `@actions/artifact` upload,
-  which also needs a real Actions runtime to succeed). The multi-PR bundle
+  and it falls back to `mode=artifact`. The upload itself is the composite
+  action's `actions/upload-artifact` step, so nothing is uploaded locally. The multi-PR bundle
   (`scripts/bundle-site.sh`) and the Pages deploy (`actions/deploy-pages`)
   only run as real composite-action steps in CI — this harness can't
   exercise them, since they need the runtime's artifact store and OIDC token.
