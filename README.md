@@ -100,7 +100,12 @@ That is why the workflow needs `actions: read` (to fetch the previous store) and
 
 ### When it falls back to an artifact
 
-If Pages can't be used, the view is uploaded as a workflow artifact named `refactoring-diff` and the comment links straight to its download. Unzip it and open `list/index.html`. This happens when:
+If Pages can't be used, the view is uploaded as a workflow artifact named `refactoring-diff`. The comment links to two things:
+
+1. the artifact's download, which GitHub only serves to people who can read the repository, and
+2. a **diff viewer** page (the `viewer-url` input) that renders the zip in the browser. Drop the downloaded zip onto it as it is: no unzipping, and nothing is uploaded, since the page unpacks it locally.
+
+Set `viewer-url: ''` to link the zip only; then unzip it and open `list/index.html`. The artifact is used when:
 
 - **the repository is private** — Pages sites would be public, so the action never publishes one for you; or
 - **Pages is served from a branch** — the legacy "Deploy from a branch" source, including a `gh-pages` branch left over from an older version of this action. Switch the Source to "GitHub Actions" as described above.
@@ -114,6 +119,7 @@ If you are getting the artifact link and expected the published view, check the 
 | `github-token` | Token used to post the PR comment and publish the view. | No | `${{ github.token }}` |
 | `image` | RefactoringMiner Docker image to run. Pin a specific tag for reproducible results. | No | `tsantalis/refactoringminer:latest` |
 | `enable-web-view` | Export and publish the interactive AST-diff view. Set to `'false'` for comment-only runs. | No | `'true'` |
+| `viewer-url` | Page that renders the `refactoring-diff` zip in the browser, linked from the comment when the view is an artifact. Must be an `https://` URL; `''` links the zip only. | No | the RefactoringMiner zip viewer |
 | `store-retention-days` | How long the bundled multi-PR site is kept between runs. A repository idle for longer starts a fresh site. | No | `'90'` |
 
 ### Pinning the RefactoringMiner version
@@ -139,7 +145,7 @@ The Docker image is pulled automatically — you do not need Java, RefactoringMi
 ## Requirements
 
 - **Linux runners only** (`ubuntu-latest` recommended). The action shells out to `docker run`, which hosted Windows and macOS runners do not provide. The bundling step also uses `gh`, `jq`, `tar` and `unzip`, all of which the hosted Ubuntu images carry; a self-hosted runner needs them installed.
-- A **public repository** for the published Pages view. Private repositories still get the full view as a workflow artifact.
+- A **public repository** for the published Pages view. Private repositories still get the full view as a workflow artifact, opened in the diff viewer.
 
 ## Supported languages
 

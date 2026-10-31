@@ -1,4 +1,4 @@
-const { buildComment, COMMENT_HEADER } = require('../src/formatter');
+const { buildComment, safeViewerUrl, COMMENT_HEADER } = require('../src/formatter');
 
 describe('buildComment', () => {
   test('returns a no-refactorings message for an empty array', () => {
@@ -110,6 +110,23 @@ describe('buildComment', () => {
     expect(body).toContain('https://github.com/o/r/actions/runs/1/artifacts/2');
   });
 
+  test('links the zip and the viewer when the artifact has a viewer URL', () => {
+    const zip = 'https://github.com/o/r/actions/runs/1/artifacts/2';
+    const viewer = 'https://claude.ai/artifact/abc';
+    const body = buildComment(threeRefactorings(), { url: zip, kind: 'artifact', viewerUrl: viewer });
+    expect(body).toContain(`[download \`refactoring-diff\`](${zip})`);
+    expect(body).toContain(`[diff viewer](${viewer})`);
+    expect(body).toContain('No need to unzip it');
+    expect(body).not.toContain('list/index.html');
+  });
+
+  test('falls back to the unzip instructions when the viewer URL is unsafe', () => {
+    const zip = 'https://github.com/o/r/actions/runs/1/artifacts/2';
+    const body = buildComment(threeRefactorings(), { url: zip, kind: 'artifact', viewerUrl: 'javascript:alert(1)' });
+    expect(body).not.toContain('diff viewer');
+    expect(body).toContain('list/index.html');
+  });
+
   test('appends the view link even when no refactorings are detected', () => {
     const body = buildComment([], { url: 'https://x.github.io/r/list/', kind: 'pages' });
     expect(body).toContain('No refactorings detected');
@@ -120,6 +137,23 @@ describe('buildComment', () => {
     const body = buildComment(threeRefactorings());
     expect(body).not.toContain('View the interactive diff');
     expect(body).not.toContain('workflow artifact');
+  });
+});
+
+describe('safeViewerUrl', () => {
+  test('keeps a plain https URL, trimmed', () => {
+    expect(safeViewerUrl(' https://claude.ai/artifact/abc ')).toBe('https://claude.ai/artifact/abc');
+  });
+
+  test.each([
+    ['empty', ''],
+    ['missing', undefined],
+    ['http', 'http://example.org/viewer'],
+    ['javascript', 'javascript:alert(1)'],
+    ['markdown breakout', 'https://example.org/a) [x](https://evil.example'],
+    ['whitespace inside', 'https://example.org/a b'],
+  ])('refuses %s', (_name, url) => {
+    expect(safeViewerUrl(url)).toBe('');
   });
 });
 
