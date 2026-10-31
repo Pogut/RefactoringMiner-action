@@ -144,18 +144,30 @@ function buildComment(refactorings, view) {
     return `${COMMENT_HEADER}\nNo refactorings detected in this change.${footer}`;
   }
 
-  const counts = all.reduce((acc, r) => {
-    acc[r.type] = (acc[r.type] || 0) + 1;
-    return acc;
-  }, {});
+  // One collapsible section per refactoring type, in the order RefactoringMiner
+  // reported them, so a long report stays one line per type until opened.
+  const groups = new Map();
+  for (const r of all) {
+    if (!groups.has(r.type)) groups.set(r.type, []);
+    groups.get(r.type).push(r);
+  }
 
-  const breakdown = Object.entries(counts)
-    .map(([type, count]) => `${count} ${type}`)
-    .join(', ');
+  const sections = [...groups].map(([type, items]) => typeSection(type, items)).join('\n\n');
+  const noun = all.length === 1 ? 'refactoring' : 'refactorings';
 
-  const details = all.map(renderRefactoring).join('\n');
+  return `${COMMENT_HEADER}\nFound ${all.length} ${noun} of ${groups.size} ${groups.size === 1 ? 'type' : 'types'}.\n\n${sections}${footer}`;
+}
 
-  return `${COMMENT_HEADER}\nFound ${all.length} refactorings: ${breakdown}\n\n${details}${footer}`;
+/**
+ * Renders one `<details>` section listing every refactoring of a type. GitHub
+ * only renders Markdown inside `<details>` when blank lines surround it.
+ * @param {string} type
+ * @param {Array<{ type: string, description?: string, markup?: string }>} items
+ * @returns {string}
+ */
+function typeSection(type, items) {
+  const label = String(type).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<details>\n<summary><b>${label}</b> (${items.length})</summary>\n\n${items.map(renderRefactoring).join('\n')}\n\n</details>`;
 }
 
 module.exports = { buildComment, safeViewerUrl, COMMENT_HEADER };

@@ -64,13 +64,32 @@ If you want the comment only, set `enable-web-view: 'false'`; then `contents: re
 A single comment on the pull request:
 
 > ### RefactoringMiner Report
-> Found 4 refactorings: 2 Extract Method, 1 Rename Parameter, 1 Move Attribute
+> Found 3 refactorings of 3 types.
+>
+> <details open>
+> <summary><b>Extract Method</b> (1)</summary>
 >
 > - **Extract Method** [private calculateTotal(unitPrice Int, quantity Int) : Int](#) extracted from [public buildReceipt(buyerName String, unitPrice Int) : String](#) in class `OrderProcessor`
+>
+> </details>
+>
+> <details>
+> <summary><b>Rename Parameter</b> (1)</summary>
+>
 > - **Rename Parameter** [customerName : String](#) to [buyerName : String](#) in method `public buildReceipt(...)` from class `OrderProcessor`
+>
+> </details>
+>
+> <details>
+> <summary><b>Move Attribute</b> (1)</summary>
+>
 > - **Move Attribute** [private street : String](#) from class `CustomerProfile` to [private street : String](#) from class `Address`
 >
+> </details>
+>
 > 🔍 **[View the interactive diff](#)**
+
+Refactorings are grouped by type, one collapsible section each (shown with the first one open here; in the comment they all start closed), so a long report stays short until you open the type you care about.
 
 Every code element is a link to the exact line in the PR's diff — RefactoringMiner generates those links itself, so they land on the right side of the split view.
 

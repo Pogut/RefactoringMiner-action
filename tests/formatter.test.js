@@ -17,10 +17,35 @@ describe('buildComment', () => {
     expect(body).toContain('Found 3 refactorings');
   });
 
-  test('groups by type in the breakdown line', () => {
+  test('groups refactorings into one collapsible section per type, in report order', () => {
     const body = buildComment(threeRefactorings());
-    expect(body).toContain('2 Rename Method');
-    expect(body).toContain('1 Change Attribute Access Modifier');
+    expect(body).toContain('Found 3 refactorings of 2 types.');
+    const renames = body.indexOf('<summary><b>Rename Method</b> (2)</summary>');
+    const modifiers = body.indexOf('<summary><b>Change Attribute Access Modifier</b> (1)</summary>');
+    expect(renames).toBeGreaterThan(-1);
+    expect(modifiers).toBeGreaterThan(renames);
+    expect(body.match(/<details>/g)).toHaveLength(2);
+    expect(body.match(/<\/details>/g)).toHaveLength(2);
+    // Both Rename Method entries sit inside the first section.
+    const firstSection = body.slice(renames, body.indexOf('</details>'));
+    expect(firstSection).toContain('private foo() : void');
+    expect(firstSection).toContain('private one() : int');
+  });
+
+  test('leaves blank lines inside each section so GitHub renders its Markdown', () => {
+    const body = buildComment(threeRefactorings());
+    expect(body).toContain('</summary>\n\n- **Rename Method**');
+    expect(body).toMatch(/in class `B`\n\n<\/details>/);
+  });
+
+  test('uses the singular for a single refactoring', () => {
+    const body = buildComment([threeRefactorings()[2]]);
+    expect(body).toContain('Found 1 refactoring of 1 type.');
+  });
+
+  test('escapes HTML in the type shown in a section summary', () => {
+    const body = buildComment([{ type: 'A <b> & C', description: 'x' }]);
+    expect(body).toContain('<summary><b>A &lt;b&gt; &amp; C</b> (1)</summary>');
   });
 
   test('renders each refactoring from its linked markup verbatim', () => {
