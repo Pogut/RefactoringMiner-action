@@ -60,6 +60,20 @@ describe('buildComment', () => {
     expect(body).toContain('from class `CustomerProfile`');
   });
 
+  test('prints generic types literally while preserving diff links and inline code', () => {
+    const url = 'https://github.com/o/my_repo/pull/107/files?a=1&b=2#diff-line';
+    const body = buildComment([{
+      type: 'Change Parameter Type',
+      markup: `**Change Parameter Type** [list<object>](${url}) to list<T> in class \`A<B>\``,
+    }]);
+    expect(body).toContain(`**Change Parameter Type** [list&lt;object&gt;](${url}) to list&lt;T&gt; in class \`A<B>\``);
+  });
+
+  test('preserves literal entities and generics in fallback descriptions', () => {
+    const body = buildComment([{ type: 'Rename Variable', description: 'list<T> &lt; U' }]);
+    expect(body).toContain('- list&lt;T&gt; &amp;lt; U');
+  });
+
   test('escapes underscores in linked dunder names so GitHub keeps them literal', () => {
     const base = 'https://github.com/o/r/pull/9/changes?diff=split#diff-hash';
     const body = buildComment([
