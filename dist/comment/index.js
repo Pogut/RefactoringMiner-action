@@ -30018,20 +30018,17 @@ function viewFooter(view) {
   return `\n\n🔗 Interactive diff exported as a workflow artifact: [download \`refactoring-diff\`](${view.url}), unzip it, and open \`list/index.html\`.`;
 }
 
-/**
- * Backslash-escapes the Markdown emphasis characters in a run of rendered text.
- *
- * GitHub treats `_` and `*` as emphasis delimiters, so Python identifiers carry
- * them straight into the rendered output: `__init__` becomes a bold "init",
- * `*args`/`**kwargs` turn italic/bold. Escaping them keeps the literal name.
- * Other punctuation in code elements (parens, colons, generics) is left alone.
- */
-function escapeEmphasis(text) {
-  return text.replace(/[_*]/g, '\\$&');
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Keep generic types and identifiers literal in GitHub's Markdown renderer.
+function escapeReportText(text) {
+  return escapeHtml(text).replace(/[_*]/g, '\\$&');
 }
 
 /**
- * Escapes emphasis only in the *rendered text* of RefactoringMiner's markup,
+ * Escapes HTML and emphasis in the rendered text of RefactoringMiner's markup,
  * leaving the markup machinery untouched.
  *
  * toMarkupStringWithGitHubLinks emits three constructs: `**bold name**`,
@@ -30047,7 +30044,7 @@ function escapeEmphasis(text) {
  * eg a Java `[String[] args](url)` or a signature `[foo()](url)`, by splitting
  * the link on the `](` separator rather than on the first `]`.
  */
-function escapeMarkupEmphasis(markup) {
+function escapeMarkupText(markup) {
   let out = '';
   let i = 0;
   while (i < markup.length) {
@@ -30066,7 +30063,7 @@ function escapeMarkupEmphasis(markup) {
       if (sep !== -1) {
         const end = markup.indexOf(')', sep + 2);
         if (end !== -1) {
-          out += `[${escapeEmphasis(markup.slice(i + 1, sep))}](${markup.slice(sep + 2, end)})`;
+          out += `[${escapeReportText(markup.slice(i + 1, sep))}](${markup.slice(sep + 2, end)})`;
           i = end + 1;
           continue;
         }
@@ -30077,8 +30074,7 @@ function escapeMarkupEmphasis(markup) {
       i += 2;
       continue;
     }
-    // Anything else is plain glue text: escape its emphasis chars.
-    out += escapeEmphasis(c);
+    out += escapeReportText(c);
     i += 1;
   }
   return out;
@@ -30090,8 +30086,8 @@ function escapeMarkupEmphasis(markup) {
  * RefactoringMiner already produces a `markup` field where code elements are
  * markdown links to the exact GitHub diff lines and class names are inline code
  * (toMarkupStringWithGitHubLinks). It starts with the bold refactoring name. We
- * pass it through escapeMarkupEmphasis so identifiers with `_`/`*` (eg Python's
- * `__init__`) survive GitHub's Markdown rendering. `description` is the
+ * pass it through escapeMarkupText so identifiers and generic types survive
+ * GitHub's Markdown rendering. `description` is the
  * plain-text fallback for output that predates the markup field (eg a non-GitHub
  * remote, or an older image); it carries the same identifiers, so it is fully
  * escaped too.
@@ -30101,12 +30097,12 @@ function escapeMarkupEmphasis(markup) {
  */
 function renderRefactoring(r) {
   if (r.markup) {
-    return `- ${escapeMarkupEmphasis(r.markup)}`;
+    return `- ${escapeMarkupText(r.markup)}`;
   }
   if (r.description) {
-    return `- ${escapeEmphasis(r.description)}`;
+    return `- ${escapeReportText(r.description)}`;
   }
-  return `- ${r.type}`;
+  return `- ${escapeReportText(String(r.type))}`;
 }
 
 /**
@@ -30146,7 +30142,7 @@ function buildComment(refactorings, view) {
  * @returns {string}
  */
 function typeSection(type, items) {
-  const label = String(type).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const label = escapeHtml(String(type));
   return `<details>\n<summary><b>${label}</b> (${items.length})</summary>\n\n${items.map(renderRefactoring).join('\n')}\n\n</details>`;
 }
 
